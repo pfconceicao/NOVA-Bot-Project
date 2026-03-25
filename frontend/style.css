@@ -1,0 +1,598 @@
+/* Reset básico */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Botão flutuante com imagem */
+#nova-bot-button {
+  position: fixed;
+  bottom: 25px;
+  right: 25px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  background-color: #ffffff;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform, background-color;
+  z-index: 9999;
+  transition: transform 0.2s ease, background-color 0.3s;
+}
+
+#nova-bot-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  transition: transform 0.2s ease, filter 0.3s;
+}
+
+/* Hover zoom */
+#nova-bot-button:hover {
+  transform: scale(1.1);
+  background-color: #a7ee23;
+}
+
+#nova-bot-button:hover img {
+  transform: scale(1.1);
+}
+
+/* Estado ativo: invertendo cores */
+#nova-bot-button.active {
+  background-color: #a7ee23;
+}
+
+#nova-bot-button.active img {
+  filter: invert(1);
+  transform: rotate(-15deg);
+  animation: pulseBrightness 1.5s infinite alternate;
+}
+
+/* Apenas pulsar o brilho */
+@keyframes pulseBrightness {
+  0% { filter: brightness(1.2); }
+  50% { filter: brightness(1.4); }
+  100% { filter: brightness(1.3); }
+}
+
+/* Janela do chat */
+#nova-bot-chatbox {
+  display: none;
+  position: fixed;
+  bottom: 100px;
+  right: 25px;
+  width: 360px;
+  max-height: 500px;
+  background: #f9f9f9;
+  border-radius: 15px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Cabeçalho */
+#nova-bot-header {
+  background-color: #00a300;
+  color: white;
+  padding: 15px;
+  font-size: 18px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Controles do cabeçalho */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Seletor de línguas */
+#language-select {
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+#language-select:hover {
+  background-color: #0058a3;
+  color: white;
+  border-color: #003f73;
+}
+#language-select:focus {
+  outline: none;
+  box-shadow: 0 0 5px rgba(0, 88, 163, 0.7);
+}
+
+/* Menu de opções (acessibilidade, fonte, tema) */
+.options-menu-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+#options-toggle {
+  background-color: #ffffff;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+}
+
+/* Menu horizontal dentro do chat */
+#accessibility-menu {
+  position: absolute;
+  top: 35px;
+  right: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 5px;
+  z-index: 999;
+  white-space: nowrap;
+}
+
+/* Oculto por padrão */
+#accessibility-menu.hidden {
+  display: none;
+}
+
+/* Botões do menu */
+#accessibility-menu button {
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+#accessibility-menu button:hover {
+  background: #ddd;
+}
+
+/* Mensagens */
+#nova-bot-messages {
+  padding: 15px;
+  flex: 1;
+  overflow-y: auto;
+  background: #f0f0f0;
+}
+.chat-message {
+  margin-bottom: 12px;
+}
+.chat-message strong {
+  display: block;
+  margin-bottom: 3px;
+}
+.chat-message span {
+  display: block;
+  line-height: 1.5;
+}
+
+/* Botões de opções dentro das respostas */
+.chat-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.btn-option {
+  background-color: #00a300;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+}
+.btn-option:hover {
+  background-color: #005ea6;
+}
+
+/* Input do usuário */
+#nova-bot-input {
+  display: flex;
+  border-top: 1px solid #ddd;
+}
+#nova-bot-input textarea {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  resize: none;
+  font-size: 14px;
+}
+#nova-bot-input button {
+  background-color: #197c0c;
+  border: none;
+  padding: 0 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s;
+  border-radius: 0 0 10px 0;
+}
+#nova-bot-input button:hover {
+  background-color: #003f73;
+}
+#nova-bot-input button svg {
+  display: block;
+}
+
+/* Scrollbar custom */
+#nova-bot-messages::-webkit-scrollbar {
+  width: 6px;
+}
+#nova-bot-messages::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.2);
+  border-radius: 3px;
+}
+#nova-bot-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Responsividade */
+@media (max-width: 400px) {
+  #nova-bot-chatbox {
+    width: 90%;
+    right: 5%;
+  }
+}
+
+/* Botão voltar em respostas */
+.btn-back {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #0070f3;
+}
+.btn-back:hover {
+  color: #005bb5;
+}
+
+/* --- Tema acessível --- */
+.accessible-theme {
+  background-color: #000 !important;
+  color: #fff !important;
+}
+.accessible-theme a {
+  color: #ff0 !important;
+  text-decoration: underline;
+}
+.accessible-theme button,
+.accessible-theme select,
+.accessible-theme textarea {
+  background-color: #222 !important;
+  color: #fff !important;
+  border-color: #fff !important;
+}
+.accessible-theme .chat-options .btn-option {
+  background-color: #444 !important;
+  color: #fff !important;
+}
+.accessible-theme #nova-bot-input button {
+  background-color: #444 !important;
+  color: #fff !important;
+}
+.accessible-theme #nova-bot-header {
+  background-color: #222 !important;
+}
+/* Reset básico */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Botão flutuante com imagem */
+#nova-bot-button {
+  position: fixed;
+  bottom: 25px;
+  right: 25px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  background-color: #ffffff;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform, background-color;
+  z-index: 9999;
+  transition: transform 0.2s ease, background-color 0.3s;
+}
+
+#nova-bot-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  transition: transform 0.2s ease, filter 0.3s;
+}
+
+/* Hover zoom */
+#nova-bot-button:hover {
+  transform: scale(1.1);
+  background-color: #a7ee23;
+}
+
+#nova-bot-button:hover img {
+  transform: scale(1.1);
+}
+
+/* Estado ativo: invertendo cores */
+#nova-bot-button.active {
+  background-color: #a7ee23;
+}
+
+#nova-bot-button.active img {
+  filter: invert(1);
+  transform: rotate(-15deg);
+  animation: pulseBrightness 1.5s infinite alternate;
+}
+
+/* Pulsar brilho */
+@keyframes pulseBrightness {
+  0% { filter: brightness(1.2); }
+  50% { filter: brightness(1.4); }
+  100% { filter: brightness(1.3); }
+}
+
+/* Janela do chat */
+#nova-bot-chatbox {
+  display: none;
+  position: fixed;
+  bottom: 100px;
+  right: 25px;
+  width: 360px;
+  max-height: 500px;
+  background: #f9f9f9;
+  border-radius: 15px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Cabeçalho */
+#nova-bot-header {
+  background-color: #00a300;
+  color: white;
+  padding: 15px;
+  font-size: 18px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+
+/* Seletor de línguas */
+#language-select {
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+#language-select:hover {
+  background-color: #0058a3;
+  color: white;
+  border-color: #003f73;
+}
+
+#language-select:focus {
+  outline: none;
+  box-shadow: 0 0 5px rgba(0, 88, 163, 0.7);
+}
+
+/* Botão de reset restaurado */
+#reset-chat {
+  background-color: #ffffff;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+#reset-chat:hover {
+  background-color: #005ea6;
+  color: #fff;
+}
+
+/* Menu de acessibilidade */
+#accessibility-menu {
+  display: flex;
+  gap: 5px;
+}
+
+#accessibility-menu button {
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+}
+
+#accessibility-menu button:hover {
+  background: #ddd;
+}
+
+/* Mensagens */
+#nova-bot-messages {
+  padding: 15px;
+  flex: 1;
+  overflow-y: auto;
+  background: #f0f0f0;
+}
+
+/* Mensagens individuais */
+.chat-message {
+  margin-bottom: 12px;
+}
+.chat-message strong {
+  display: block;
+  margin-bottom: 3px;
+}
+.chat-message span {
+  display: block;
+  line-height: 1.5;
+}
+
+/* Botões de opções */
+.chat-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.btn-option {
+  background-color: #00a300;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 14px;
+}
+.btn-option:hover {
+  background-color: #005ea6;
+}
+
+/* Input do usuário */
+#nova-bot-input {
+  display: flex;
+  border-top: 1px solid #ddd;
+}
+#nova-bot-input textarea {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  resize: none;
+  font-size: 14px;
+}
+#nova-bot-input button {
+  background-color: #197c0c;
+  border: none;
+  padding: 0 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s;
+  border-radius: 0 0 10px 0;
+}
+#nova-bot-input button:hover {
+  background-color: #003f73;
+}
+
+/* Scrollbar custom */
+#nova-bot-messages::-webkit-scrollbar {
+  width: 6px;
+}
+#nova-bot-messages::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.2);
+  border-radius: 3px;
+}
+#nova-bot-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Responsividade */
+@media (max-width: 400px) {
+  #nova-bot-chatbox {
+    width: 90%;
+    right: 5%;
+  }
+}
+
+/* Botão voltar */
+.btn-back {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #0070f3;
+}
+.btn-back:hover {
+  color: #005bb5;
+}
+
+/* --- Tema acessível simplificado --- */
+.accessible-theme {
+  background-color: #000 !important;      /* fundo da janela */
+  color: #fff !important;                 /* texto normal */
+}
+
+.accessible-theme a {
+  color: #ff0 !important;                 /* links */
+  text-decoration: underline;
+}
+
+.accessible-theme button,
+.accessible-theme select,
+.accessible-theme textarea {
+  background-color: #222 !important;      /* botões e input */
+  color: #fff !important;
+  border-color: #fff !important;
+}
+
+.accessible-theme .chat-options .btn-option {
+  background-color: #444 !important;      /* botões de opções dentro do chat */
+  color: #fff !important;
+}
+
+.accessible-theme #nova-bot-input button {
+  background-color: #444 !important;      /* botão de envio */
+  color: #fff !important;
+}
+
+.accessible-theme #nova-bot-messages {
+  background-color: #222 !important;      /* fundo das mensagens */
+  color: #fff !important;
+}
+
+/* mantém o cabeçalho verde normal, só muda para cinza/preto quando em acessível */
+.accessible-theme #nova-bot-header {
+  background-color: #222 !important;
+}

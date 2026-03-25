@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOVA.Bot – Demonstração</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Botão flutuante -->
+  <button id="nova-bot-button" title="Abrir chat"><img src="logo-NOVA.png" alt="logo NOVA"></button>
+
+  <!-- Janela do chat -->
+  <div id="nova-bot-chatbox" role="dialog" aria-labelledby="nova-bot-header">
+
+    <!-- Cabeçalho -->
+    <div id="nova-bot-header">
+      NOVA.Bot
+
+      <div class="header-controls">
+
+        <!-- Idioma -->
+        <select id="language-select" aria-label="Selecionar idioma">
+          <option value="pt">PT</option>
+          <option value="en">EN</option>
+        </select>
+
+        <!-- Novo chat -->
+        <button id="reset-chat" title="Iniciar novo chat" aria-label="Novo chat">
+          🔄
+        </button>
+
+        <!-- Menu de acessibilidade -->
+        <div class="options-menu-wrapper">
+          <button id="options-toggle" title="Opções de acessibilidade" aria-label="Opções">
+            ⚙️
+          </button>
+
+          <div id="accessibility-menu" class="hidden">
+            <button id="increase-font" aria-label="Aumentar tamanho do texto">A+</button>
+            <button id="decrease-font" aria-label="Diminuir tamanho do texto">A-</button>
+            <button id="toggle-theme" aria-label="Alterar contraste">🎨</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Mensagens -->
+    <div
+      id="nova-bot-messages"
+      aria-live="polite"
+      aria-atomic="false">
+    </div>
+
+    <!-- Input -->
+    <div id="nova-bot-input">
+      <textarea
+        id="user-input"
+        rows="1"
+        placeholder="Escreve aqui…"
+        aria-label="Mensagem">
+      </textarea>
+
+      <button id="send-btn" title="Enviar mensagem" aria-label="Enviar">
+        <svg xmlns="http://www.w3.org/2000/svg"
+             width="24" height="24"
+             viewBox="0 0 24 24"
+             fill="white"
+             aria-hidden="true">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+
+  </div>
+
+  <!-- JavaScript -->
+  <script src="nova-bot.js"></script>
+
+</body>
+</html>

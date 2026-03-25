@@ -1,0 +1,22 @@
+# Ignorar pastas de modelos e node_modules dentro do backend
+backend/models/
+backend/node_modules/
+
+# Ignorar a pasta index_docs (ficheiros ndjson)
+index_docs/
+
+# Ignorar ficheiros grandes específicos dentro dessas pastas (opcional)
+**/*.bin
+**/*.gguf
+**/*.pt
+**/*.pth
+**/*.safetensors
+
+# Outras boas práticas (opcional)
+*.log
+.env
+.vscode/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

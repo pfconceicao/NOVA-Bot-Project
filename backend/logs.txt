@@ -1,0 +1,16 @@
+
+📩 Pergunta: o que é o reconhecimento automático?
+🧾 HTTP: 200
+💬 Resposta: Reconhecimento automático é o ato que permite reconhecer genericamente um grau ou diploma de ensino superior estrangeiro cujo nível, objetivos e natureza sejam idênticos aos graus portugueses.
+
+📩 Pergunta: a que graus se aplica o reconhecimento automático?
+🧾 HTTP: 200
+💬 Resposta: Aplica-se aos graus de licenciado, mestre e doutor ou de diploma de técnico superior profissional.
+
+📩 Pergunta: que documentos tenho de entregar?
+🧾 HTTP: 200
+💬 Resposta: Deve anexar ao formulário online: •   Cópia do Diploma; •   Documento onde conste a classificação final atribuída, a escala de classificações utilizada (ex. de 0 a 10) e classificação mínima de aprovação (ex.5).
+
+📩 Pergunta: quanto custa o reconhecimento automático?
+🧾 HTTP: 200
+💬 Resposta: O reconhecimento automático custa 60€.
