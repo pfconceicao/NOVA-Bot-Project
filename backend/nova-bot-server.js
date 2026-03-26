@@ -24,6 +24,10 @@ const MAX_CONTEXT_CHARS = 6500;
 const FALLBACK = "Não encontrei informação relevante nos documentos disponíveis.";
 const OUT_OF_DOMAIN_MESSAGE =
   "Pergunta fora do âmbito académico da NOVA. Posso ajudar com reconhecimento, candidaturas, propinas, alojamento universitário e serviços académicos.";
+const EMOLUMENTS_URL =
+  "https://www.unl.pt/sites/default/files/deliberacao_702_2020_atualizacao_tabela_emolumentos.pdf";
+const RESPONSE_CACHE_TTL_MS = 30 * 60 * 1000;
+const RESPONSE_CACHE_MAX_ENTRIES = 300;
 
 // ───────── Config patch fundação ─────────
 const FOUNDATION_SHORTCUT_TOP_N = 500; // quantos chunks considerar no atalho rápido
@@ -69,6 +73,8 @@ const DOMAIN_KEYWORDS = [
   "alojamento",
   "reconhecimento",
   "reconhecimentos",
+  "emolumento",
+  "emolumentos",
   "crédito",
   "créditos",
   "tempo",
@@ -88,6 +94,86 @@ const DOMAIN_KEYWORDS = [
 
 // ───────── Gestão de sessões para contexto de conversa ─────────
 const sessionContext = new Map();
+const sessionPendingState = new Map();
+const responseCache = new Map();
+
+function buildResponseCacheKey(questionNorm, topicNorm = "") {
+  return `${topicNorm}::${questionNorm}`;
+}
+
+function getCachedResponse(cacheKey) {
+  const entry = responseCache.get(cacheKey);
+  if (!entry) return null;
+
+  if (Date.now() - entry.createdAt > RESPONSE_CACHE_TTL_MS) {
+    responseCache.delete(cacheKey);
+    return null;
+  }
+
+  return {
+    statusCode: entry.statusCode,
+    payload: JSON.parse(JSON.stringify(entry.payload)),
+    pendingState: entry.pendingState ?? null,
+  };
+}
+
+function setCachedResponse(cacheKey, statusCode, payload, pendingState = null) {
+  if (!cacheKey) return;
+
+  if (responseCache.size >= RESPONSE_CACHE_MAX_ENTRIES) {
+    const oldestKey = responseCache.keys().next().value;
+    if (oldestKey) responseCache.delete(oldestKey);
+  }
+
+  responseCache.set(cacheKey, {
+    statusCode,
+    payload: JSON.parse(JSON.stringify(payload)),
+    pendingState,
+    createdAt: Date.now(),
+  });
+}
+
+function buildScopedChunkPool(chunks, lowerNorm, topicNorm = "") {
+  const scope = `${topicNorm} ${lowerNorm}`;
+
+  const filterByNeedles = (needles) => {
+    const filtered = chunks.filter((chunk) => {
+      const hay = stripDiacriticsLower(
+        `${chunk.text ?? ""} ${chunk.relativePath ?? ""} ${chunk.file ?? ""} ${chunk.category ?? ""}`
+      );
+      return needles.some((needle) => hay.includes(needle));
+    });
+
+    return filtered.length >= 5 ? filtered : chunks;
+  };
+
+  if (
+    scope.includes("reconhecimento") ||
+    scope.includes("emolumento") ||
+    scope.includes("propina") ||
+    scope.includes("dges")
+  ) {
+    return filterByNeedles(["reconhecimento", "dges", "emolumento", "propina"]);
+  }
+
+  if (
+    scope.includes("alojamento") ||
+    scope.includes("residencia") ||
+    scope.includes("sasnova")
+  ) {
+    return filterByNeedles(["alojamento", "residencia", "sasnova"]);
+  }
+
+  if (scope.includes("fundacao") || scope.includes("direito privado")) {
+    return filterByNeedles(["fundacao", "direito privado", "regime"]);
+  }
+
+  if (scope.includes("estatuto") || scope.includes("colegio") || scope.includes("director")) {
+    return filterByNeedles(["estatuto", "colegio", "director", "diretor"]);
+  }
+
+  return chunks;
+}
 
 function inferTopicFromQuestion(lower) {
   const t = stripDiacriticsLower(lower);
@@ -106,6 +192,10 @@ function inferTopicFromQuestion(lower) {
   // Reconhecimento académico
   if (t.includes("reconhecimento") && (t.includes("academico") || t.includes("académico")))
     return "reconhecimento académico";
+
+  // Reconhecimento genérico
+  if (t.includes("reconhecimento"))
+    return "reconhecimento";
 
   // Alojamento
   if (t.includes("alojamento") || t.includes("residencia") || t.includes("residência"))
@@ -1724,7 +1814,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "") {
   if (isCostQuestion) {
     return {
       answer:
-        "Custa 40€ sem conversão da classificação final para a escala portuguesa (0 a 20 valores), ou 60€ com conversão da classificação para a escala portuguesa.",
+        `Custa 40€ sem conversão da classificação final para a escala portuguesa (0 a 20 valores), ou 60€ com conversão da classificação para a escala portuguesa. Tabela de emolumentos: ${EMOLUMENTS_URL}.`,
       citations: [],
     };
   }
@@ -1798,7 +1888,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "") {
   if (isCostQuestion) {
     return {
       answer:
-        "Reconhecimento de nível sem conversão da classificação final: Licenciatura, Mestrado ou Doutoramento (obtidos em países da UE): 268,00 €; Licenciatura ou Doutoramento (obtidos em países exteriores à UE): 650,00 €; Mestrado (obtido em países exteriores à UE): 520,00 €. Reconhecimento de nível com conversão da classificação final: Licenciatura ou Mestrado (obtidos em países da UE): 298,00 €; Licenciatura (obtida em países exteriores à UE): 680,00 €; Mestrado (obtido em países exteriores à UE): 550,00 €.",
+        `Reconhecimento de nível sem conversão da classificação final: Licenciatura, Mestrado ou Doutoramento (obtidos em países da UE): 268,00 €; Licenciatura ou Doutoramento (obtidos em países exteriores à UE): 650,00 €; Mestrado (obtido em países exteriores à UE): 520,00 €. Reconhecimento de nível com conversão da classificação final: Licenciatura ou Mestrado (obtidos em países da UE): 298,00 €; Licenciatura (obtida em países exteriores à UE): 680,00 €; Mestrado (obtido em países exteriores à UE): 550,00 €. Tabela de emolumentos: ${EMOLUMENTS_URL}.`,
       citations: [],
     };
   }
@@ -1882,7 +1972,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "")
   if (isCostQuestion) {
     return {
       answer:
-        "Reconhecimentos Específicos (com nota final atribuída pelo júri): • Licenciatura, Mestrado ou Doutoramento (obtido em países da UE): 268,00 €; • Licenciatura ou Doutoramento (obtido em países exteriores à UE): 650,00 €; • Mestrado (obtido em países exteriores à UE): 520,00 €; • Reconhecimento específico em Medicina: 1.500,00 €.",
+        `Reconhecimentos Específicos (com nota final atribuída pelo júri): • Licenciatura, Mestrado ou Doutoramento (obtido em países da UE): 268,00 €; • Licenciatura ou Doutoramento (obtido em países exteriores à UE): 650,00 €; • Mestrado (obtido em países exteriores à UE): 520,00 €; • Reconhecimento específico em Medicina: 1.500,00 €. Tabela de emolumentos: ${EMOLUMENTS_URL}.`,
       citations: [],
     };
   }
@@ -2020,6 +2110,38 @@ if (inferredTopic) {
 
 const topicHint = sessionContext.get(sessionId) || "";
 const topicHintNorm = stripDiacriticsLower(topicHint);
+const lowerNorm = stripDiacriticsLower(lower);
+const pendingState = sessionPendingState.get(sessionId) || "";
+const isRecognitionExplainPrompt =
+  lowerNorm === "explica entao" ||
+  lowerNorm === "explica então" ||
+  lowerNorm === "explica" ||
+  lowerNorm === "entao explica" ||
+  lowerNorm === "então explica" ||
+  lowerNorm === "podes explicar" ||
+  lowerNorm === "pode explicar";
+
+if (!(pendingState === "generic_recognition_explain" && isRecognitionExplainPrompt)) {
+  sessionPendingState.delete(sessionId);
+}
+
+const cacheKey = buildResponseCacheKey(lowerNorm, topicHintNorm);
+
+const sendJson = (statusCode, payload, { cacheable = true, pendingState: nextPendingState = null } = {}) => {
+  if (nextPendingState) sessionPendingState.set(sessionId, nextPendingState);
+  else sessionPendingState.delete(sessionId);
+
+  if (cacheable) setCachedResponse(cacheKey, statusCode, payload, nextPendingState);
+  return res.status(statusCode).json(payload);
+};
+
+const cachedResponse = getCachedResponse(cacheKey);
+if (cachedResponse) {
+  console.log("⚡ Cache hit");
+  if (cachedResponse.pendingState) sessionPendingState.set(sessionId, cachedResponse.pendingState);
+  else sessionPendingState.delete(sessionId);
+  return res.status(cachedResponse.statusCode).json(cachedResponse.payload);
+}
 
 // mantém isto (usas mais abaixo para boosts)
 const isTimeQuestion =
@@ -2027,8 +2149,6 @@ const isTimeQuestion =
   lower.includes("tempo") ||
   lower.includes("prazo") ||
   lower.includes("dias");
-
-const lowerNorm = stripDiacriticsLower(lower);
 
 const isHousingIntent =
   lowerNorm.includes("alojamento") ||
@@ -2064,9 +2184,7 @@ const isDomain =
 // Permitir follow-ups mesmo sem palavras-chave explícitas
 if (hasHardOutOfDomainSignal || (!isDomain && !isFollowUp)) {
   console.log("❌ Bloqueado: fora do domínio institucional");
-  return res
-    .status(403)
-    .json({
+  return sendJson(403, {
       answer: OUT_OF_DOMAIN_MESSAGE,
       citations: [],
       blocked: true,
@@ -2079,17 +2197,117 @@ if (
   lowerNorm.includes("arranjar casa") ||
   lowerNorm.includes("procurar casa")
 ) {
-  return res.json({
+  return sendJson(200, {
     answer:
       "Posso ajudar apenas com alojamento universitário (residências e apoio dos SASNOVA). Se quiser, indico como solicitar alojamento académico na NOVA.",
     citations: [],
   });
 }
 
+// ───────── RESPOSTAS DETERMINÍSTICAS ANTES DE EMBEDDINGS/LLM ─────────
+const qNormRecon = lowerNorm;
+const mentionsReconhecimento = qNormRecon.includes("reconhecimento");
+const mentionsType =
+  qNormRecon.includes("automatico") ||
+  qNormRecon.includes("nivel") ||
+  qNormRecon.includes("especifico");
+
+const asksRecognitionValuesOverview =
+  mentionsReconhecimento &&
+  !mentionsType &&
+  (qNormRecon.includes("valor") || qNormRecon.includes("valores") || qNormRecon.includes("custa") || qNormRecon.includes("custo") || qNormRecon.includes("quanto")) &&
+  (qNormRecon.includes("tipos") || qNormRecon.includes("respetivos") || qNormRecon.includes("respectivos") || qNormRecon.includes("diferentes"));
+
+const asksGeneralRecognitionOverview =
+  mentionsReconhecimento &&
+  !mentionsType &&
+  (qNormRecon.includes("reconhecimento de graus") ||
+    qNormRecon.includes("reconhecimento de diplomas") ||
+    qNormRecon.includes("como funciona o reconhecimento") ||
+    qNormRecon.includes("como funciona o reconhecimento de graus") ||
+    qNormRecon.includes("o que e o reconhecimento em portugal"));
+
+const topicHasType =
+  topicHintNorm.includes("automatico") ||
+  topicHintNorm.includes("nivel") ||
+  topicHintNorm.includes("especifico");
+
+const asksGenericRecognitionExplanationFollowUp =
+  pendingState === "generic_recognition_explain" &&
+  !mentionsType &&
+  isRecognitionExplainPrompt;
+
+if (asksRecognitionValuesOverview) {
+  return sendJson(200, {
+    answer:
+      `Valores por tipo de reconhecimento:\n• Reconhecimento automático: 40€ sem conversão da classificação final, ou 60€ com conversão da classificação para a escala portuguesa.\n• Reconhecimento de nível: sem conversão, 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE) e 520,00 € (Mestrado fora da UE); com conversão, 298,00 € (UE), 680,00 € (Licenciatura fora da UE) e 550,00 € (Mestrado fora da UE).\n• Reconhecimento específico: 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE), 520,00 € (Mestrado fora da UE) e 1.500,00 € em Medicina.\n\nTabela de emolumentos: ${EMOLUMENTS_URL}.`,
+    citations: [],
+  });
+}
+
+if (asksGeneralRecognitionOverview) {
+  return sendJson(200, {
+    answer:
+      "O reconhecimento em Portugal de graus académicos e diplomas de ensino superior atribuídos por instituições de ensino superior estrangeiras é regulado, desde 1 de janeiro de 2019, pelo Decreto-Lei n.º 66/2018: https://dre.pt/application/conteudo/116068880. Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático: para graus/diplomas que constam do elenco oficialmente reconhecido.\n• Reconhecimento de nível: para reconhecer por comparabilidade o nível do grau ou diploma estrangeiro.\n• Reconhecimento específico: para reconhecer um grau ou diploma estrangeiro como idêntico a um grau ou diploma português numa área e especialidade determinadas.\n\nSe quiser, posso explicar qualquer um deles.",
+    citations: [],
+  }, { pendingState: "generic_recognition_explain" });
+}
+
+if (asksGenericRecognitionExplanationFollowUp) {
+  return sendJson(200, {
+    answer:
+      "Posso explicar qualquer um dos três tipos de reconhecimento:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nQual deles pretende que eu explique?",
+    citations: [],
+  });
+}
+
+if (mentionsReconhecimento && !mentionsType && !topicHasType) {
+  console.log("❓ CLARIFICAÇÃO: reconhecimento sem tipo especificado");
+  return sendJson(200, {
+    answer:
+      "Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nA qual deles se refere?",
+    citations: [],
+  });
+}
+
+if (
+  qNormRecon.includes("emolumento") ||
+  qNormRecon.includes("propina") ||
+  qNormRecon.includes("propinas")
+) {
+  return sendJson(200, {
+    answer:
+      `Pode consultar a tabela de emolumentos aqui: ${EMOLUMENTS_URL}. Se quiser, também posso indicar os valores do reconhecimento automático, de nível ou específico.`,
+    citations: [],
+  });
+}
+
+const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(lower, topicHintNorm);
+if (specificFallbackDeterministic) {
+  console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento específico");
+  return sendJson(200, specificFallbackDeterministic);
+}
+
+const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(lower, topicHintNorm);
+if (levelFallbackDeterministic) {
+  console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento de nível");
+  return sendJson(200, levelFallbackDeterministic);
+}
+
+const automaticFallback = automaticRecognitionFallbackIfNeeded(lower, topicHintNorm);
+if (automaticFallback) {
+  console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento automático");
+  return sendJson(200, automaticFallback);
+}
+
     const embedder = await embedderPromise;
+    const candidateChunks = buildScopedChunkPool(chunks, lowerNorm, topicHintNorm);
+    if (candidateChunks.length !== chunks.length) {
+      console.log(`⚡ Prefiltro de chunks: ${candidateChunks.length}/${chunks.length}`);
+    }
     const qEmbedding = Array.from((await embedder(enhancedQuestion)).data);
 
-    let scored = chunks
+    let scored = candidateChunks
       .filter((c) => Array.isArray(c.embedding) && typeof c.text === "string")
       .map((c) => {
   const baseScore = cosineSimilarity(qEmbedding, c.embedding);
@@ -2325,48 +2543,7 @@ const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
 if (locationFallback) {
   console.log("✅ DETETADO: Usando fallback de localização obrigatório");
 
-  return res.json(locationFallback);
-}
-
-// ───────── CLARIFICAÇÃO: "reconhecimento" sem tipo especificado ─────────
-const qNormRecon = stripDiacriticsLower(lower);
-const mentionsReconhecimento = qNormRecon.includes("reconhecimento");
-const mentionsType =
-  qNormRecon.includes("automatico") ||
-  qNormRecon.includes("nivel") ||
-  qNormRecon.includes("especifico");
-
-// Só clarificar se a pergunta contém "reconhecimento" E não vem de um follow-up com tópico de tipo definido
-const topicHasType =
-  topicHintNorm.includes("automatico") ||
-  topicHintNorm.includes("nivel") ||
-  topicHintNorm.includes("especifico");
-
-if (mentionsReconhecimento && !mentionsType && !topicHasType) {
-  console.log("❓ CLARIFICAÇÃO: reconhecimento sem tipo especificado");
-  return res.json({
-    answer:
-      "Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nA qual deles se refere?",
-    citations: [],
-  });
-}
-
-const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(lower, topicHintNorm);
-if (specificFallbackDeterministic) {
-  console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento específico");
-  return res.json(specificFallbackDeterministic);
-}
-
-const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(lower, topicHintNorm);
-if (levelFallbackDeterministic) {
-  console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento de nível");
-  return res.json(levelFallbackDeterministic);
-}
-
-const automaticFallback = automaticRecognitionFallbackIfNeeded(lower, topicHintNorm);
-if (automaticFallback) {
-  console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento automático");
-  return res.json(automaticFallback);
+  return sendJson(200, locationFallback);
 }
 
     const subject = extractSubjectForDefinition(lower);
@@ -2762,7 +2939,7 @@ const citationsOut = validCitations.slice(0, 3).map((c) => {
   return { chunk: c.chunk, quote: c.quote, source: originOfChunk(ch) };
 });
 
-return res.json({
+return sendJson(200, {
   answer: answerText,
   citations: citationsOut,
 });
