@@ -8,6 +8,8 @@ import { pipeline } from "@xenova/transformers";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "mistral";
 
 const app = express();
 app.use(cors());
@@ -63,11 +65,11 @@ Pergunta:
 ${message}
 `;
 
-    const response = await fetch("http://localhost:11434/api/generate", {
+    const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "mistral",
+        model: OLLAMA_MODEL,
         prompt,
         stream: false
       })

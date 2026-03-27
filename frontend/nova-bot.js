@@ -9,6 +9,15 @@ const sendBtn = document.getElementById("send-btn");
 
 let currentLanguage = languageSelect.value;
 const API_URL = "http://localhost:3000"; // porta do backend
+let currentSessionId = createSessionId();
+
+function createSessionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `nova-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 // --- Função para chamar o backend ---
 async function getBackendResponse(question) {
@@ -16,7 +25,7 @@ async function getBackendResponse(question) {
     const res = await fetch(`${API_URL}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, language: currentLanguage })
+      body: JSON.stringify({ question, language: currentLanguage, sessionId: currentSessionId })
     });
     const data = await res.json();
     return data.answer; // assume que o backend retorna { answer: "..." }
@@ -112,6 +121,7 @@ function appendUserMessage(text) {
 resetBtn.addEventListener("click", () => {
   messages.innerHTML = "";
   botHistory.length = 0;
+  currentSessionId = createSessionId();
   appendBotMessage(translations.welcome[currentLanguage]);
 });
 

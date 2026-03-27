@@ -15,6 +15,8 @@ import readline from "readline";
 const PORT = 3000;
 const indexFolder = path.resolve("./index_docs");
 const modelPath = "Xenova/all-MiniLM-L6-v2";
+const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "mistral";
 
 const TOP_K = 5;
 const MIN_SIMILARITY = 0.15;
@@ -28,6 +30,41 @@ const EMOLUMENTS_URL =
   "https://www.unl.pt/sites/default/files/deliberacao_702_2020_atualizacao_tabela_emolumentos.pdf";
 const RESPONSE_CACHE_TTL_MS = 30 * 60 * 1000;
 const RESPONSE_CACHE_MAX_ENTRIES = 300;
+
+async function checkOllamaModelAvailability() {
+  try {
+    const resp = await fetch(`${OLLAMA_HOST}/api/tags`);
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      console.warn(`⚠️ Não foi possível validar modelos do Ollama (${resp.status} ${resp.statusText}) ${text}`);
+      return;
+    }
+
+    const data = await resp.json();
+    const installedModels = Array.isArray(data?.models) ? data.models : [];
+    const hasConfiguredModel = installedModels.some((entry) => {
+      const name = String(entry?.name ?? "").toLowerCase();
+      return name === OLLAMA_MODEL.toLowerCase() || name.startsWith(`${OLLAMA_MODEL.toLowerCase()}:`);
+    });
+
+    if (hasConfiguredModel) {
+      console.log(`🤖 Ollama pronto com o modelo \"${OLLAMA_MODEL}\"`);
+      return;
+    }
+
+    const available = installedModels
+      .map((entry) => String(entry?.name ?? "").trim())
+      .filter(Boolean)
+      .join(", ");
+
+    console.warn(`⚠️ Modelo Ollama configurado não encontrado: \"${OLLAMA_MODEL}\"`);
+    console.warn(`   Define OLLAMA_MODEL ou instala-o com: ollama pull ${OLLAMA_MODEL}`);
+    console.warn(`   Modelos disponíveis: ${available || "nenhum"}`);
+  } catch (err) {
+    console.warn(`⚠️ Não foi possível contactar o Ollama em ${OLLAMA_HOST}: ${String(err?.message ?? err)}`);
+  }
+}
 
 // ───────── Config patch fundação ─────────
 const FOUNDATION_SHORTCUT_TOP_N = 500; // quantos chunks considerar no atalho rápido
@@ -95,6 +132,7 @@ const DOMAIN_KEYWORDS = [
 // ───────── Gestão de sessões para contexto de conversa ─────────
 const sessionContext = new Map();
 const sessionPendingState = new Map();
+const sessionLastIntent = new Map();
 const responseCache = new Map();
 
 function buildResponseCacheKey(questionNorm, topicNorm = "") {
@@ -175,8 +213,10 @@ function buildScopedChunkPool(chunks, lowerNorm, topicNorm = "") {
   return chunks;
 }
 
-function inferTopicFromQuestion(lower) {
+function inferTopicFromQuestion(lower, previousTopic = "") {
   const t = stripDiacriticsLower(lower);
+  const previous = stripDiacriticsLower(previousTopic);
+  const hasRecognitionContext = previous.includes("reconhecimento");
 
   // Reconhecimento automático
   if (t.includes("reconhecimento") && t.includes("automatico"))
@@ -197,6 +237,12 @@ function inferTopicFromQuestion(lower) {
   if (t.includes("reconhecimento"))
     return "reconhecimento";
 
+  if (hasRecognitionContext) {
+    if (t.includes("automatico")) return "reconhecimento automático";
+    if (t.includes("nivel")) return "reconhecimento de nível";
+    if (t.includes("especifico")) return "reconhecimento específico";
+  }
+
   // Alojamento
   if (t.includes("alojamento") || t.includes("residencia") || t.includes("residência"))
     return "alojamento";
@@ -206,6 +252,72 @@ function inferTopicFromQuestion(lower) {
     return "localização";
 
   return null;
+}
+
+function detectQuestionIntent(lower) {
+  const q = stripDiacriticsLower(lower);
+
+  const isTimeQuestion =
+    q.includes("demora") ||
+    q.includes("tempo") ||
+    q.includes("prazo") ||
+    q.includes("dias") ||
+    q.includes("semanas") ||
+    q.includes("meses");
+
+  if (q.includes("o que e") || q.includes("definicao") || q.includes("define") || q.includes("significa")) {
+    return "definition";
+  }
+
+  if (q.includes("graus") || q.includes("aplica") || q.includes("a que graus") || q.includes("quais graus")) {
+    return "degrees";
+  }
+
+  if (q.includes("onde") || q.includes("como solicitar") || q.includes("onde solicitar") || q.includes("formulario")) {
+    return "where";
+  }
+
+  if (
+    q.includes("document") ||
+    q.includes("entregar") ||
+    q.includes("anexar") ||
+    q.includes("diploma") ||
+    q.includes("historico") ||
+    q.includes("programa")
+  ) {
+    return "documents";
+  }
+
+  if (!isTimeQuestion && (q.includes("custa") || q.includes("custo") || q.includes("quanto") || q.includes("valor"))) {
+    return "cost";
+  }
+
+  if (isTimeQuestion) {
+    return "time";
+  }
+
+  return null;
+}
+
+function buildIntentCarryQuestion(intent, topic) {
+  if (!intent || !topic) return null;
+
+  switch (intent) {
+    case "definition":
+      return `o que e ${topic}`;
+    case "degrees":
+      return `a que graus estrangeiros se aplica ${topic}`;
+    case "where":
+      return `onde solicitar ${topic}`;
+    case "documents":
+      return `que documentos entregar para ${topic}`;
+    case "cost":
+      return `quanto custa ${topic}`;
+    case "time":
+      return `quanto tempo demora ${topic}`;
+    default:
+      return null;
+  }
 }
 
 function cosineSimilarity(vecA, vecB) {
@@ -1579,10 +1691,10 @@ function academicRecognitionFallbackIfNeeded(lower, scored) {
 
 // ───────── CHAMADA AO LLM ─────────
 async function callOllamaJson(question, context, { timeoutMs, optionsOverride, answerSpec } = {}) {
-  const url = "http://localhost:11434/api/generate";
+  const url = `${OLLAMA_HOST}/api/generate`;
 
   const payload = {
-    model: "mistral",
+    model: OLLAMA_MODEL,
     prompt: `Responda com base UNICAMENTE no contexto abaixo. Use apenas informações do contexto. Se a resposta não estiver no contexto, responda com: "${FALLBACK}"
 
 CONTEXTO:
@@ -1737,6 +1849,8 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "") {
   if (!isAutoTopic) return null;
 
   const isDefinitionQuestion =
+    q === "reconhecimento automatico" ||
+    q === "reconhecimento automático" ||
     q.includes("o que e") ||
     q.includes("definicao") ||
     q.includes("define") ||
@@ -1834,6 +1948,10 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "") {
   if (!isLevelTopic) return null;
 
   const isDefinitionQuestion =
+    q === "reconhecimento de nivel" ||
+    q === "reconhecimento nivel" ||
+    q === "reconhecimento de nível" ||
+    q === "reconhecimento nível" ||
     q.includes("o que e") ||
     q.includes("definicao") ||
     q.includes("define") ||
@@ -1864,7 +1982,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "") {
   if (isDefinitionQuestion) {
     return {
       answer:
-        "O reconhecimento de nível é o ato que permite reconhecer um grau ou diploma de ensino superior estrangeiro como correspondente a um grau académico ou diploma de ensino superior português, após análise casuística do nível, duração e conteúdo programático, numa determinada área de formação, ramo de conhecimento ou especialidade.",
+        "O reconhecimento de nível é o ato que permite reconhecer por comparabilidade, de forma individualizada, um grau ou diploma de ensino superior estrangeiro como tendo um nível correspondente a um grau académico ou diploma de ensino superior português.",
       citations: [],
     };
   }
@@ -1916,6 +2034,8 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "")
   if (!isSpecificTopic) return null;
 
   const isDefinitionQuestion =
+    q === "reconhecimento especifico" ||
+    q === "reconhecimento específico" ||
     q.includes("o que e") ||
     q.includes("definicao") ||
     q.includes("define") ||
@@ -2016,11 +2136,14 @@ async function bootstrap() {
 
   console.log("🧠 A carregar modelo de embeddings..."); 
   const embedderPromise = pipeline("feature-extraction", modelPath, { pooling: "mean", normalize: true, });
+  await checkOllamaModelAvailability();
 
   app.post("/ask", async (req, res) => {
   try {
     const questionRaw = req.body?.question;
-    const sessionId = req.body?.sessionId || "default";
+    const rawSessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : "";
+    const sessionId = rawSessionId || null;
+    const trackSession = Boolean(sessionId);
     const question = typeof questionRaw === "string" ? questionRaw.trim() : "";
     if (!question) return res.status(400).json({ error: "Question is required" });
 
@@ -2048,8 +2171,12 @@ const FOLLOWUP_PATTERNS = [
 ];
 
 const qTrim = lower.trim();
-const previousTopicRaw = sessionContext.get(sessionId) || "";
+const previousTopicRaw = trackSession ? (sessionContext.get(sessionId) || "") : "";
 const previousTopicNorm = stripDiacriticsLower(previousTopicRaw);
+const inferredTopic = inferTopicFromQuestion(lower, previousTopicRaw);
+const inferredTopicNorm = stripDiacriticsLower(inferredTopic || "");
+const currentIntent = detectQuestionIntent(lower);
+const previousIntent = trackSession ? (sessionLastIntent.get(sessionId) || "") : "";
 const hasQualifiedSessionTopic =
   previousTopicNorm.includes("reconhecimento") ||
   previousTopicNorm.includes("alojamento") ||
@@ -2075,15 +2202,29 @@ const isGenericCostQuestion =
   !qTrim.includes("propina") &&
   qTrim.length <= 30;
 
+const isExplicitTopicSwitch =
+  Boolean(inferredTopicNorm) &&
+  Boolean(previousTopicNorm) &&
+  inferredTopicNorm !== previousTopicNorm;
+
+const isEllipticContinuation = /^e\b/i.test(qTrim);
+
+const canCarryIntentAcrossTopicSwitch =
+  trackSession &&
+  isEllipticContinuation &&
+  isExplicitTopicSwitch &&
+  !currentIntent &&
+  Boolean(previousIntent) &&
+  previousTopicNorm.includes("reconhecimento") &&
+  inferredTopicNorm.includes("reconhecimento");
+
 const isFollowUp =
+  !isExplicitTopicSwitch &&
   (FOLLOWUP_PATTERNS.some((re) => re.test(qTrim)) ||
    (hasQualifiedSessionTopic && qTrim.length <= 48)) &&
   !hasDocTerms &&
   !hasLocationTerms &&
   !(hasCostTerms && !(hasQualifiedSessionTopic && isGenericCostQuestion));
-
-// inferir tópico “curto”
-const inferredTopic = inferTopicFromQuestion(lower);
 
 // usar tópico anterior quando é follow-up
 let enhancedQuestion = question;
@@ -2093,8 +2234,27 @@ if (isFollowUp && hasQualifiedSessionTopic) {
   console.log(`🔄 Usando tópico anterior para follow-up: ${previousTopic}`);
 }
 
+let routedQuestion = enhancedQuestion;
+let effectiveIntent = currentIntent;
+const activeTopicForIntent = inferredTopic || (trackSession ? (sessionContext.get(sessionId) || "") : "");
+
+if (canCarryIntentAcrossTopicSwitch) {
+  const carryQuestion = buildIntentCarryQuestion(previousIntent, inferredTopic);
+  if (carryQuestion) {
+    routedQuestion = carryQuestion;
+    effectiveIntent = previousIntent;
+    console.log(`🔁 A herdar intenção anterior (${previousIntent}) para novo tópico: ${inferredTopic}`);
+  }
+} else if (trackSession && isEllipticContinuation && currentIntent && activeTopicForIntent) {
+  const normalizedQuestion = buildIntentCarryQuestion(currentIntent, activeTopicForIntent);
+  if (normalizedQuestion) {
+    routedQuestion = normalizedQuestion;
+    console.log(`🧭 Follow-up normalizado para intenção ${currentIntent}: ${normalizedQuestion}`);
+  }
+}
+
 // atualizar contexto da sessão
-if (inferredTopic) {
+if (trackSession && inferredTopic) {
   const previousTopic = sessionContext.get(sessionId);
   const inferredNorm = stripDiacriticsLower(inferredTopic);
   const previousNorm = stripDiacriticsLower(previousTopic ?? "");
@@ -2108,10 +2268,11 @@ if (inferredTopic) {
   }
 }
 
-const topicHint = sessionContext.get(sessionId) || "";
+const topicHint = trackSession ? (sessionContext.get(sessionId) || "") : "";
 const topicHintNorm = stripDiacriticsLower(topicHint);
-const lowerNorm = stripDiacriticsLower(lower);
-const pendingState = sessionPendingState.get(sessionId) || "";
+const routedLower = routedQuestion.toLowerCase();
+const lowerNorm = stripDiacriticsLower(routedLower);
+const pendingState = trackSession ? (sessionPendingState.get(sessionId) || "") : "";
 const isRecognitionExplainPrompt =
   lowerNorm === "explica entao" ||
   lowerNorm === "explica então" ||
@@ -2121,15 +2282,22 @@ const isRecognitionExplainPrompt =
   lowerNorm === "podes explicar" ||
   lowerNorm === "pode explicar";
 
-if (!(pendingState === "generic_recognition_explain" && isRecognitionExplainPrompt)) {
+if (trackSession && !(pendingState === "generic_recognition_explain" && isRecognitionExplainPrompt)) {
   sessionPendingState.delete(sessionId);
+}
+
+if (trackSession) {
+  if (effectiveIntent) sessionLastIntent.set(sessionId, effectiveIntent);
+  else if (!isEllipticContinuation) sessionLastIntent.delete(sessionId);
 }
 
 const cacheKey = buildResponseCacheKey(lowerNorm, topicHintNorm);
 
 const sendJson = (statusCode, payload, { cacheable = true, pendingState: nextPendingState = null } = {}) => {
-  if (nextPendingState) sessionPendingState.set(sessionId, nextPendingState);
-  else sessionPendingState.delete(sessionId);
+  if (trackSession) {
+    if (nextPendingState) sessionPendingState.set(sessionId, nextPendingState);
+    else sessionPendingState.delete(sessionId);
+  }
 
   if (cacheable) setCachedResponse(cacheKey, statusCode, payload, nextPendingState);
   return res.status(statusCode).json(payload);
@@ -2138,8 +2306,10 @@ const sendJson = (statusCode, payload, { cacheable = true, pendingState: nextPen
 const cachedResponse = getCachedResponse(cacheKey);
 if (cachedResponse) {
   console.log("⚡ Cache hit");
-  if (cachedResponse.pendingState) sessionPendingState.set(sessionId, cachedResponse.pendingState);
-  else sessionPendingState.delete(sessionId);
+  if (trackSession) {
+    if (cachedResponse.pendingState) sessionPendingState.set(sessionId, cachedResponse.pendingState);
+    else sessionPendingState.delete(sessionId);
+  }
   return res.status(cachedResponse.statusCode).json(cachedResponse.payload);
 }
 
@@ -2282,19 +2452,19 @@ if (
   });
 }
 
-const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(lower, topicHintNorm);
+const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm);
 if (specificFallbackDeterministic) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento específico");
   return sendJson(200, specificFallbackDeterministic);
 }
 
-const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(lower, topicHintNorm);
+const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm);
 if (levelFallbackDeterministic) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento de nível");
   return sendJson(200, levelFallbackDeterministic);
 }
 
-const automaticFallback = automaticRecognitionFallbackIfNeeded(lower, topicHintNorm);
+const automaticFallback = automaticRecognitionFallbackIfNeeded(routedLower, topicHintNorm);
 if (automaticFallback) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento automático");
   return sendJson(200, automaticFallback);
@@ -2305,7 +2475,7 @@ if (automaticFallback) {
     if (candidateChunks.length !== chunks.length) {
       console.log(`⚡ Prefiltro de chunks: ${candidateChunks.length}/${chunks.length}`);
     }
-    const qEmbedding = Array.from((await embedder(enhancedQuestion)).data);
+    const qEmbedding = Array.from((await embedder(routedQuestion)).data);
 
     let scored = candidateChunks
       .filter((c) => Array.isArray(c.embedding) && typeof c.text === "string")
@@ -2570,12 +2740,12 @@ if (locationFallback) {
       console.log(` - score ${c.score.toFixed(3)} | ${originOfChunk(c)} | ${String(c.text).slice(0, 70)}...`);
     });
 
-    if (topPreview.length === 0) return res.json(jsonFallback());
+    if (topPreview.length === 0) return sendJson(200, jsonFallback());
 
     const best = topPreview[0];
     if (best.score < MIN_SIMILARITY) {
       console.log(`❌ Bloqueado por baixa similaridade (best=${best.score.toFixed(3)})`);
-      return res.json(jsonFallback());
+      return sendJson(200, jsonFallback());
     }
 
     const isDefinition = Boolean(subject);
@@ -2627,7 +2797,7 @@ if (locationFallback) {
         console.log(`🔍 nivelFallback result: ${nivelFallback ? 'FOUND' : 'NULL'}`);
         if (nivelFallback) {
           console.log(`📤 RETORNANDO: nivelFallback`);
-          return res.json(nivelFallback);
+          return sendJson(200, nivelFallback);
         }
 
         // Tentar fallback específico para reconhecimento académico
@@ -2635,7 +2805,7 @@ if (locationFallback) {
         console.log(`🔍 academicFallback result: ${academicFallback ? 'FOUND' : 'NULL'}`);
         if (academicFallback) {
           console.log(`📤 RETORNANDO: academicFallback`);
-          return res.json(academicFallback);
+          return sendJson(200, academicFallback);
         }
 
         // Tentar fallback específico para custos (genérico)
@@ -2643,24 +2813,24 @@ if (locationFallback) {
         console.log(`🔍 costFallback result: ${costFallback ? 'FOUND' : 'NULL'}`);
         if (costFallback) {
           console.log(`📤 RETORNANDO: costFallback`);
-          return res.json(costFallback);
+          return sendJson(200, costFallback);
         }
 
         // Tentar fallback específico para alojamento
         const housingFallback = housingFallbackIfNeeded(lower, scored);
-        if (housingFallback) return res.json(housingFallback);
+        if (housingFallback) return sendJson(200, housingFallback);
 
         // Tentar fallback específico para localização
         const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-        if (locationFallback) return res.json(locationFallback);
+        if (locationFallback) return sendJson(200, locationFallback);
 
         const exDef = extractiveDefinitionFallback(lower, selectedChunks);
-        if (exDef) return res.json(exDef);
+        if (exDef) return sendJson(200, exDef);
 
         const fast = foundationFallbackIfNeeded(lower, scored);
-        if (fast) return res.json(fast);
+        if (fast) return sendJson(200, fast);
 
-        return res.json(jsonFallback());
+        return sendJson(200, jsonFallback());
       }
     }
 
@@ -2672,37 +2842,37 @@ if (locationFallback) {
 
       // Tentar fallback específico para reconhecimento de nível primeiro
       const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
-      if (nivelFallback) return res.json(nivelFallback);
+      if (nivelFallback) return sendJson(200, nivelFallback);
 
       // Tentar fallback específico para reconhecimento académico
       const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
-      if (academicFallback) return res.json(academicFallback);
+      if (academicFallback) return sendJson(200, academicFallback);
 
       // Tentar fallback específico para custos (genérico)
       const costFallback = costFallbackIfNeeded(lower, scored);
-      if (costFallback) return res.json(costFallback);
+      if (costFallback) return sendJson(200, costFallback);
 
       // Tentar fallback específico para alojamento
       const housingFallback = housingFallbackIfNeeded(lower, scored);
-      if (housingFallback) return res.json(housingFallback);
+      if (housingFallback) return sendJson(200, housingFallback);
 
       // Tentar fallback específico para localização
       const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-      if (locationFallback) return res.json(locationFallback);
+      if (locationFallback) return sendJson(200, locationFallback);
 
       const exDef = extractiveDefinitionFallback(lower, selectedChunks);
-      if (exDef) return res.json(exDef);
+      if (exDef) return sendJson(200, exDef);
 
       const fast = foundationFallbackIfNeeded(lower, scored);
-      if (fast) return res.json(fast);
+      if (fast) return sendJson(200, fast);
 
-      return res.json(jsonFallback());
+      return sendJson(200, jsonFallback());
     }
 
     // ───────── VERIFICAÇÃO: Filtrar respostas incorretas sobre Associação de Estudantes ─────────
 // preparar answerText ANTES de qualquer uso
 const answerText = String(obj.answer ?? "").trim();
-if (!answerText) return res.json(jsonFallback());
+if (!answerText) return sendJson(200, jsonFallback());
 
 // Guardrail: se o tópico é reconhecimento de nível, não aceitar respostas que só falem de reconhecimento académico
 if (topicHintNorm.includes("reconhecimento") && topicHintNorm.includes("nivel")) {
@@ -2716,9 +2886,9 @@ if (topicHintNorm.includes("reconhecimento") && topicHintNorm.includes("nivel"))
     console.log("❌ Tópico é 'reconhecimento de nível' mas resposta fala só de 'reconhecimento académico' -> fallback");
 
     const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-    if (locationFallback) return res.json(locationFallback);
+    if (locationFallback) return sendJson(200, locationFallback);
 
-    return res.json(jsonFallback());
+    return sendJson(200, jsonFallback());
   }
 }
 
@@ -2728,37 +2898,37 @@ if (answerText.includes("Associação de Estudantes") || answerText.includes("As
 
   // Tentar fallback de localização
   const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-  if (locationFallback) return res.json(locationFallback);
+  if (locationFallback) return sendJson(200, locationFallback);
 
   // Se não encontrar, usar fallback genérico
-  return res.json(jsonFallback());
+  return sendJson(200, jsonFallback());
 }
 
 if (answerText === FALLBACK) {
   console.log("ℹ️ LLM devolveu fallback explícito (JSON)");
 
   const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
-  if (nivelFallback) return res.json(nivelFallback);
+  if (nivelFallback) return sendJson(200, nivelFallback);
 
   const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
-  if (academicFallback) return res.json(academicFallback);
+  if (academicFallback) return sendJson(200, academicFallback);
 
   const costFallback = costFallbackIfNeeded(lower, scored);
-  if (costFallback) return res.json(costFallback);
+  if (costFallback) return sendJson(200, costFallback);
 
   const housingFallback = housingFallbackIfNeeded(lower, scored);
-  if (housingFallback) return res.json(housingFallback);
+  if (housingFallback) return sendJson(200, housingFallback);
 
   const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-  if (locationFallback) return res.json(locationFallback);
+  if (locationFallback) return sendJson(200, locationFallback);
 
   const exDef = extractiveDefinitionFallback(lower, selectedChunks);
-  if (exDef) return res.json(exDef);
+  if (exDef) return sendJson(200, exDef);
 
   const fast = foundationFallbackIfNeeded(lower, scored);
-  if (fast) return res.json(fast);
+  if (fast) return sendJson(200, fast);
 
-  return res.json(jsonFallback());
+  return sendJson(200, jsonFallback());
 }
 
     const citations = obj.citations
@@ -2776,31 +2946,31 @@ if (answerText === FALLBACK) {
 
       // Tentar fallback específico para reconhecimento de nível primeiro
       const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
-      if (nivelFallback) return res.json(nivelFallback);
+      if (nivelFallback) return sendJson(200, nivelFallback);
 
       // Tentar fallback específico para reconhecimento académico
       const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
-      if (academicFallback) return res.json(academicFallback);
+      if (academicFallback) return sendJson(200, academicFallback);
 
       // Tentar fallback específico para custos (genérico)
       const costFallback = costFallbackIfNeeded(lower, scored);
-      if (costFallback) return res.json(costFallback);
+      if (costFallback) return sendJson(200, costFallback);
 
       // Tentar fallback específico para alojamento
       const housingFallback = housingFallbackIfNeeded(lower, scored);
-      if (housingFallback) return res.json(housingFallback);
+      if (housingFallback) return sendJson(200, housingFallback);
 
       // Tentar fallback específico para localização
       const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-      if (locationFallback) return res.json(locationFallback);
+      if (locationFallback) return sendJson(200, locationFallback);
 
       const exDef = extractiveDefinitionFallback(lower, selectedChunks);
-      if (exDef) return res.json(exDef);
+      if (exDef) return sendJson(200, exDef);
 
       const fast = foundationFallbackIfNeeded(lower, scored);
-      if (fast) return res.json(fast);
+      if (fast) return sendJson(200, fast);
 
-      return res.json(jsonFallback());
+      return sendJson(200, jsonFallback());
     }
 
       // ───────── Validação de citações melhorada para OCR ─────────
@@ -2845,31 +3015,31 @@ if (validCitations.length === 0) {
 
   // Tentar fallback específico para reconhecimento de nível primeiro
   const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
-  if (nivelFallback) return res.json(nivelFallback);
+  if (nivelFallback) return sendJson(200, nivelFallback);
 
   // Tentar fallback específico para reconhecimento académico
   const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
-  if (academicFallback) return res.json(academicFallback);
+  if (academicFallback) return sendJson(200, academicFallback);
 
   // Tentar fallback específico para custos (genérico)
   const costFallback = costFallbackIfNeeded(lower, scored);
-  if (costFallback) return res.json(costFallback);
+  if (costFallback) return sendJson(200, costFallback);
 
   // Tentar fallback específico para alojamento
   const housingFallback = housingFallbackIfNeeded(lower, scored);
-  if (housingFallback) return res.json(housingFallback);
+  if (housingFallback) return sendJson(200, housingFallback);
 
   // Tentar fallback específico para localização
   const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-  if (locationFallback) return res.json(locationFallback);
+  if (locationFallback) return sendJson(200, locationFallback);
 
   const exDef = extractiveDefinitionFallback(lower, selectedChunks);
-  if (exDef) return res.json(exDef);
+  if (exDef) return sendJson(200, exDef);
 
   const fast = foundationFallbackIfNeeded(lower, scored);
-  if (fast) return res.json(fast);
+  if (fast) return sendJson(200, fast);
 
-  return res.json(jsonFallback());
+  return sendJson(200, jsonFallback());
 }
 
 // ───────── Regra especial: fundação+regime tem de mencionar o regime (aceita 1 frase / 1 citação) ─────────
@@ -2883,8 +3053,8 @@ if (fundacaoRegime) {
   if (!answersRegime) {
     console.log("❌ Fundacao+regime: resposta não menciona o regime -> fallback determinístico");
     const fast = foundationFallbackIfNeeded(lower, scored);
-    if (fast) return res.json(fast);
-    return res.json(jsonFallback());
+    if (fast) return sendJson(200, fast);
+    return sendJson(200, jsonFallback());
   }
     
   // PARA fundacaoRegime: aceitar 1 citação mesmo com 2+ frases
@@ -2906,31 +3076,31 @@ if (fundacaoRegime) {
 
     // Tentar fallback específico para reconhecimento de nível primeiro
     const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
-    if (nivelFallback) return res.json(nivelFallback);
+    if (nivelFallback) return sendJson(200, nivelFallback);
 
     // Tentar fallback específico para reconhecimento académico
     const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
-    if (academicFallback) return res.json(academicFallback);
+    if (academicFallback) return sendJson(200, academicFallback);
 
     // Tentar fallback específico para custos (genérico)
     const costFallback = costFallbackIfNeeded(lower, scored);
-    if (costFallback) return res.json(costFallback);
+    if (costFallback) return sendJson(200, costFallback);
 
     // Tentar fallback específico para alojamento
     const housingFallback = housingFallbackIfNeeded(lower, scored);
-    if (housingFallback) return res.json(housingFallback);
+    if (housingFallback) return sendJson(200, housingFallback);
 
     // Tentar fallback específico para localização
     const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
-    if (locationFallback) return res.json(locationFallback);
+    if (locationFallback) return sendJson(200, locationFallback);
 
     const exDef = extractiveDefinitionFallback(lower, selectedChunks);
-    if (exDef) return res.json(exDef);
+    if (exDef) return sendJson(200, exDef);
 
     const fast = foundationFallbackIfNeeded(lower, scored);
-    if (fast) return res.json(fast);
+    if (fast) return sendJson(200, fast);
 
-    return res.json(jsonFallback());
+    return sendJson(200, jsonFallback());
   }
 }
 
@@ -2951,6 +3121,8 @@ return sendJson(200, {
 
 app.listen(PORT, () => {
   console.log(`🚀 NOVA.Bot API ativa em http://localhost:${PORT}`);
+  console.log(`🦙 Ollama host: ${OLLAMA_HOST}`);
+  console.log(`🦙 Ollama model: ${OLLAMA_MODEL}`);
 });
 }
 
