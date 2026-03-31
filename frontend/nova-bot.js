@@ -1,4 +1,3 @@
-// --- Seletores principais ---
 const botButton = document.getElementById("nova-bot-button");
 const botWindow = document.getElementById("nova-bot-chatbox");
 const messages = document.getElementById("nova-bot-messages");
@@ -6,10 +5,85 @@ const input = document.getElementById("user-input");
 const languageSelect = document.getElementById("language-select");
 const resetBtn = document.getElementById("reset-chat");
 const sendBtn = document.getElementById("send-btn");
+const optionsToggle = document.getElementById("options-toggle");
+const accessibilityMenu = document.getElementById("accessibility-menu");
+const increaseFontBtn = document.getElementById("increase-font");
+const decreaseFontBtn = document.getElementById("decrease-font");
+const toggleThemeBtn = document.getElementById("toggle-theme");
 
-let currentLanguage = languageSelect.value;
-const API_URL = "http://localhost:3000"; // porta do backend
-let currentSessionId = createSessionId();
+const API_URL = "http://localhost:3000/ask";
+const FONT_SCALE_MIN = 0.9;
+const FONT_SCALE_MAX = 1.2;
+const FONT_SCALE_STEP = 0.05;
+const TYPEWRITER_MIN_DELAY_MS = 8;
+const TYPEWRITER_MAX_DELAY_MS = 20;
+const REQUEST_TIMEOUT_MS = 90000;
+
+const state = {
+  currentLanguage: languageSelect.value,
+  currentSessionId: createSessionId(),
+  fontScale: 1,
+  isAccessibleTheme: false,
+  isWaitingResponse: false,
+};
+
+const translations = {
+  welcome: {
+    pt: "Olá. Estou aqui para ajudar. Faça a sua pergunta quando quiser.",
+    en: "Hello. I am here to help. Ask your question whenever you are ready.",
+  },
+  hint: {
+    pt: "Pode fazer follow-ups na mesma conversa ou iniciar um novo chat para limpar o contexto.",
+    en: "You can ask follow-up questions in the same chat or start a new chat to clear context.",
+  },
+  placeholder: {
+    pt: "Escreve aqui…",
+    en: "Type here…",
+  },
+  error: {
+    pt: "Não foi possível obter resposta neste momento.",
+    en: "It was not possible to get a response right now.",
+  },
+  offline: {
+    pt: "Não consegui contactar o servidor. Verifique se o backend está ativo em http://localhost:3000.",
+    en: "I could not reach the server. Check whether the backend is running at http://localhost:3000.",
+  },
+  timeout: {
+    pt: "Não consegui responder a essa pergunta neste momento. Tente reformular ou escolha um dos tópicos sugeridos.",
+    en: "I could not answer that question right now. Try rephrasing it or choose one of the suggested topics.",
+  },
+  empty: {
+    pt: "Escreve uma pergunta para continuar.",
+    en: "Type a question to continue.",
+  },
+  reset: {
+    pt: "Novo chat iniciado. O contexto anterior foi limpo.",
+    en: "New chat started. Previous context was cleared.",
+  },
+  suggestionsTitle: {
+    pt: "Sugestões",
+    en: "Suggestions",
+  },
+  blocked: {
+    pt: "Essa pergunta parece fora do âmbito do bot. Tente reformular no contexto da NOVA ou do reconhecimento académico.",
+    en: "That question seems outside the bot's scope. Try rephrasing it in the NOVA or academic recognition context.",
+  },
+};
+
+const quickPrompts = {
+  pt: [
+    "O que é o reconhecimento automático?",
+    "Que documentos entregar para reconhecimento de nível?",
+    "Quanto custa o reconhecimento específico?",
+    "Qual é o horário da UAA?",
+  ],
+  en: [
+    "What is automatic recognition?",
+    "Which documents are required for level recognition?",
+    "How much does specific recognition cost?",
+    "What are the UAA opening hours?",
+  ],
+};
 
 function createSessionId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -19,196 +93,430 @@ function createSessionId() {
   return `nova-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-// --- Função para chamar o backend ---
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function linkifyText(text) {
+  return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noreferrer noopener">$1</a>');
+}
+
+function formatAnswer(answer) {
+  const lines = String(answer ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return `<p>${escapeHtml(String(answer ?? ""))}</p>`;
+  }
+
+  const parts = [];
+  let bulletBuffer = [];
+
+  const flushBullets = () => {
+    if (bulletBuffer.length === 0) return;
+    const items = bulletBuffer
+      .map((item) => `<li>${linkifyText(escapeHtml(item))}</li>`)
+      .join("");
+    parts.push(`<ul class="message-list">${items}</ul>`);
+    bulletBuffer = [];
+  };
+
+  lines.forEach((line) => {
+    const bulletMatch = line.match(/^[•\-*]\s*(.+)$/);
+    if (bulletMatch) {
+      bulletBuffer.push(bulletMatch[1]);
+      return;
+    }
+
+    flushBullets();
+    parts.push(`<p>${linkifyText(escapeHtml(line))}</p>`);
+  });
+
+  flushBullets();
+  return parts.join("");
+}
+
+function autoResizeInput() {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+}
+
+function scrollMessagesToBottom() {
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getTypingDelay(textLength) {
+  if (textLength > 280) return TYPEWRITER_MIN_DELAY_MS;
+  if (textLength > 140) return 12;
+  return TYPEWRITER_MAX_DELAY_MS;
+}
+
+function setLoadingState(isLoading) {
+  state.isWaitingResponse = isLoading;
+  sendBtn.disabled = isLoading;
+  input.disabled = isLoading;
+}
+
+function createMessage({ role, html, meta, citations = [], actions = [] }) {
+  const article = document.createElement("article");
+  article.className = `chat-message ${role}`;
+
+  const badge = document.createElement("div");
+  badge.className = "message-role";
+  badge.textContent = role === "user" ? "Tu" : role === "system" ? "Nota" : "NOVA.Bot";
+  article.appendChild(badge);
+
+  const bubble = document.createElement("div");
+  bubble.className = "message-bubble";
+  bubble.innerHTML = html;
+  article.appendChild(bubble);
+
+  messages.appendChild(article);
+  scrollMessagesToBottom();
+
+  return {
+    article,
+    bubble,
+    appendMeta() {
+      if (!meta) return;
+      const metaEl = document.createElement("div");
+      metaEl.className = "message-meta";
+      metaEl.textContent = meta;
+      article.appendChild(metaEl);
+    },
+    appendCitations() {
+      if (citations.length === 0) return;
+      const citationsWrap = document.createElement("div");
+      citationsWrap.className = "message-citations";
+
+      const title = document.createElement("div");
+      title.className = "message-citations-title";
+      title.textContent = state.currentLanguage === "pt" ? "Fontes" : "Sources";
+      citationsWrap.appendChild(title);
+
+      citations.slice(0, 3).forEach((citation) => {
+        const item = document.createElement("div");
+        item.className = "citation-item";
+
+        const source = citation.source ? `<strong>${escapeHtml(citation.source)}</strong>` : "";
+        const quote = citation.quote ? `<span>${escapeHtml(citation.quote)}</span>` : "";
+        item.innerHTML = `${source}${source && quote ? "<br>" : ""}${quote}`;
+        citationsWrap.appendChild(item);
+      });
+
+      article.appendChild(citationsWrap);
+    },
+    appendActions() {
+      if (actions.length === 0) return;
+      const actionsWrap = document.createElement("div");
+      actionsWrap.className = "message-actions";
+
+      actions.forEach((actionLabel) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn-option";
+        button.textContent = actionLabel;
+        button.addEventListener("click", () => {
+          input.value = actionLabel;
+          autoResizeInput();
+          handleUserMessage(actionLabel);
+        });
+        actionsWrap.appendChild(button);
+      });
+
+      article.appendChild(actionsWrap);
+    },
+  };
+}
+
+async function appendBotMessage(answer, options = {}) {
+  const message = createMessage({
+    role: options.role || "bot",
+    html: "",
+    meta: options.meta,
+    citations: options.citations || [],
+    actions: options.actions || [],
+  });
+
+  const plainText = String(answer ?? "").replace(/\s+/g, " ").trim();
+  const shouldSimulateTyping = options.simulateTyping !== false && (options.role || "bot") === "bot";
+
+  if (!shouldSimulateTyping || plainText.length === 0) {
+    message.bubble.innerHTML = formatAnswer(answer);
+    message.appendMeta();
+    message.appendCitations();
+    message.appendActions();
+    scrollMessagesToBottom();
+    return;
+  }
+
+  const typingDelay = getTypingDelay(plainText.length);
+  for (let index = 1; index <= plainText.length; index += 1) {
+    message.bubble.textContent = plainText.slice(0, index);
+    scrollMessagesToBottom();
+    await wait(typingDelay);
+  }
+
+  message.bubble.innerHTML = formatAnswer(answer);
+  message.appendMeta();
+  message.appendCitations();
+  message.appendActions();
+  scrollMessagesToBottom();
+}
+
+function appendUserMessage(text) {
+  createMessage({ role: "user", html: `<p>${escapeHtml(text)}</p>` });
+}
+
+function appendSystemMessage(text) {
+  createMessage({ role: "system", html: `<p>${escapeHtml(text)}</p>` });
+}
+
+async function showQuickPrompts() {
+  await appendBotMessage(translations.hint[state.currentLanguage], {
+    actions: quickPrompts[state.currentLanguage],
+    meta: translations.suggestionsTitle[state.currentLanguage],
+    simulateTyping: false,
+  });
+}
+
+function showTypingIndicator() {
+  const wrapper = document.createElement("article");
+  wrapper.className = "chat-message bot typing-message";
+  wrapper.innerHTML = `
+    <div class="message-role">NOVA.Bot</div>
+    <div class="message-bubble">
+      <span class="typing-dots"><span></span><span></span><span></span></span>
+    </div>
+  `;
+  messages.appendChild(wrapper);
+  scrollMessagesToBottom();
+  return wrapper;
+}
+
+function removeTypingIndicator(node) {
+  if (node && node.parentNode) {
+    node.parentNode.removeChild(node);
+  }
+}
+
 async function getBackendResponse(question) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response;
   try {
-    const res = await fetch(`${API_URL}/ask`, {
+    response = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, language: currentLanguage, sessionId: currentSessionId })
+      body: JSON.stringify({
+        question,
+        language: state.currentLanguage,
+        sessionId: state.currentSessionId,
+      }),
+      signal: controller.signal,
     });
-    const data = await res.json();
-    return data.answer; // assume que o backend retorna { answer: "..." }
-  } catch (err) {
-    console.error("Erro ao contactar backend:", err);
-    return null;
+  } catch (error) {
+    clearTimeout(timer);
+
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error("REQUEST_TIMEOUT");
+      timeoutError.code = "REQUEST_TIMEOUT";
+      throw timeoutError;
+    }
+
+    const networkError = new Error("NETWORK_ERROR");
+    networkError.code = "NETWORK_ERROR";
+    throw networkError;
   }
+
+  clearTimeout(timer);
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 403 && (data?.blocked || typeof data?.answer === "string")) {
+    return {
+      ...data,
+      blocked: true,
+      reason: data?.reason || "out_of_domain",
+    };
+  }
+
+  if (!response.ok) {
+    const backendError = new Error(data?.error || `HTTP ${response.status}`);
+    backendError.code = "BACKEND_ERROR";
+    backendError.status = response.status;
+    throw backendError;
+  }
+
+  return data;
 }
 
-// --- FAQ simplificada como fallback ---
-const faqs = {
-  pt: [
-    { label: "Contactos Principais", keywords: ["contacto", "telefone", "email"], answer: "<p>Para informações gerais da NOVA: geral@unl.pt | +351 21 371 5600</p>" },
-    { label: "Candidaturas", keywords: ["candidatura", "inscrição"], answer: "<p>As candidaturas ao ensino superior público são feitas através do concurso nacional DGES. Mais info: <a href='https://www.dges.gov.pt/' target='_blank'>DGES</a></p>" }
-  ],
-  en: [
-    { label: "Main Contacts", keywords: ["contact", "phone", "email"], answer: "<p>For general information at NOVA: geral@unl.pt | +351 21 371 5600</p>" },
-    { label: "Applications", keywords: ["application", "admission"], answer: "<p>Applications to public higher education are made through the national competition DGES. More info: <a href='https://www.dges.gov.pt/' target='_blank'>DGES</a></p>" }
-  ]
-};
+async function maybeShowTopicSuggestions(question, responseData) {
+  const normalized = question.toLowerCase();
+  const answer = String(responseData?.answer ?? "");
 
-// --- Mensagens padrão ---
-const translations = {
-  welcome: { pt: "Olá! Pergunta-me qualquer coisa ou escreve 'tópicos' para explorar a FAQ.", en: "Hello! Ask me anything or type 'topics' to explore the FAQ." },
-  notFound: { pt: "Não encontrei informação. Tenta reformular ou escreve 'tópicos'.", en: "I couldn't find info. Try rephrasing or type 'topics'." }
-};
+  if (normalized.includes("reconhecimento") && answer.includes("A qual deles se refere?")) {
+    await appendBotMessage(answer, {
+      actions: [
+        "Reconhecimento automático",
+        "Reconhecimento de nível",
+        "Reconhecimento específico",
+      ],
+      simulateTyping: true,
+    });
+    return true;
+  }
 
-// --- Normalização ---
-function normalizeText(text) {
-  return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w\s]/g, "").trim();
+  return false;
 }
 
-// --- Histórico ---
-const botHistory = [];
+async function handleUserMessage(rawText) {
+  const text = String(rawText ?? "").trim();
+  if (!text || state.isWaitingResponse) {
+    if (!text) appendSystemMessage(translations.empty[state.currentLanguage]);
+    return;
+  }
 
-// --- Indicador "a escrever..." ---
-function showTypingIndicator() {
-  const wrap = document.createElement("div");
-  wrap.className = "chat-message";
-  const strong = document.createElement("strong");
-  strong.textContent = "NUMA: ";
-  const span = document.createElement("span");
-  span.className = "typing-dots";
-  wrap.appendChild(strong);
-  wrap.appendChild(span);
-  messages.appendChild(wrap);
-  messages.scrollTop = messages.scrollHeight;
-
-  let dots = 0;
-  const interval = setInterval(() => {
-    dots = (dots + 1) % 4;
-    span.textContent = ".".repeat(dots);
-  }, 320);
-
-  return { el: wrap, timer: interval };
-}
-function removeTypingIndicator(ind) {
-  if (!ind) return;
-  clearInterval(ind.timer);
-  if (ind.el && ind.el.parentNode) ind.el.remove();
-}
-
-// --- Append mensagem bot ---
-function appendBotMessage(text) {
-  const msg = document.createElement("div");
-  msg.className = "chat-message";
-  const strong = document.createElement("strong");
-  strong.textContent = "NUMA: ";
-  msg.appendChild(strong);
-  const span = document.createElement("span");
-  span.innerHTML = text;
-  msg.appendChild(span);
-  messages.appendChild(msg);
-  messages.scrollTop = messages.scrollHeight;
-  botHistory.push({ type: 'bot', text });
-}
-
-// --- Append mensagem utilizador ---
-function appendUserMessage(text) {
-  const msg = document.createElement("div");
-  msg.className = "chat-message";
-  const strong = document.createElement("strong");
-  strong.textContent = "Tu: ";
-  msg.appendChild(strong);
-  const span = document.createElement("span");
-  span.textContent = text;
-  msg.appendChild(span);
-  messages.appendChild(msg);
-  messages.scrollTop = messages.scrollHeight;
-}
-
-// --- Reset chat ---
-resetBtn.addEventListener("click", () => {
-  messages.innerHTML = "";
-  botHistory.length = 0;
-  currentSessionId = createSessionId();
-  appendBotMessage(translations.welcome[currentLanguage]);
-});
-
-// --- Mostrar tópicos ---
-function showAllTopics() {
-  const faqList = faqs[currentLanguage] || [];
-  let html = "<ul>";
-  faqList.forEach(item => {
-    html += `<li>${item.label}</li>`;
-  });
-  html += "</ul>";
-  appendBotMessage(html);
-}
-
-// --- Processar pergunta ---
-async function handleUserMessage(text) {
   appendUserMessage(text);
-  const normalized = normalizeText(text);
+  input.value = "";
+  autoResizeInput();
+  setLoadingState(true);
+  const typingIndicator = showTypingIndicator();
 
-  // Comando para mostrar todos os tópicos
-  if (["topicos", "topics"].includes(normalized.replace(/\s+/g, ""))) {
-    showAllTopics();
-    return;
-  }
-
-  const faqList = faqs[currentLanguage] || [];
-  let matched = faqList.find(item =>
-    item.keywords.some(k => normalized.includes(normalizeText(k)))
-  );
-
-  const ind = showTypingIndicator();
-
-  // Primeiro tenta FAQ
-  if (matched) {
-    setTimeout(() => {
-      removeTypingIndicator(ind);
-      appendBotMessage(matched.answer);
-    }, 400);
-    return;
-  }
-
-  // Se não estiver na FAQ, chama backend
   try {
-    const answer = await getBackendResponse(text);
-    removeTypingIndicator(ind);
-    if (answer) {
-      appendBotMessage(answer);
-    } else {
-      appendBotMessage(translations.notFound[currentLanguage]);
+    const responseData = await getBackendResponse(text);
+    removeTypingIndicator(typingIndicator);
+
+    if (await maybeShowTopicSuggestions(text, responseData)) {
+      return;
     }
-  } catch (err) {
-    removeTypingIndicator(ind);
-    console.error("Erro a obter resposta do backend:", err);
-    appendBotMessage("❌ Erro ao contactar o servidor.");
+
+    if (responseData?.blocked) {
+      await appendBotMessage(responseData.answer || translations.blocked[state.currentLanguage], {
+        meta: responseData.reason || "blocked",
+        actions: quickPrompts[state.currentLanguage],
+      });
+      return;
+    }
+
+    await appendBotMessage(responseData.answer || translations.error[state.currentLanguage], {
+      citations: responseData.citations || [],
+    });
+  } catch (error) {
+    removeTypingIndicator(typingIndicator);
+    console.error("Erro ao obter resposta do backend:", error);
+    let errorMessage = translations.error[state.currentLanguage];
+    let errorMeta = null;
+
+    if (error?.code === "NETWORK_ERROR") {
+      errorMessage = translations.offline[state.currentLanguage];
+      errorMeta = "network";
+    } else if (error?.code === "REQUEST_TIMEOUT") {
+      errorMessage = translations.timeout[state.currentLanguage];
+      errorMeta = "timeout";
+    } else if (error?.code === "BACKEND_ERROR") {
+      errorMessage = error.message || translations.error[state.currentLanguage];
+      errorMeta = error.status ? `HTTP ${error.status}` : "backend";
+    }
+
+    await appendBotMessage(errorMessage, {
+      role: "system",
+      meta: errorMeta,
+      actions: quickPrompts[state.currentLanguage],
+      simulateTyping: false,
+    });
+  } finally {
+    setLoadingState(false);
+    input.focus();
   }
 }
 
-// --- Eventos ---
-sendBtn.addEventListener("click", () => {
-  const text = input.value.trim();
-  if (text) {
-    handleUserMessage(text);
-    input.value = "";
+function resetChat() {
+  messages.innerHTML = "";
+  state.currentSessionId = createSessionId();
+  appendSystemMessage(translations.reset[state.currentLanguage]);
+  appendBotMessage(translations.welcome[state.currentLanguage]);
+}
+
+function updateUiLanguage() {
+  input.placeholder = translations.placeholder[state.currentLanguage];
+
+  if (botWindow.classList.contains("open") && !messages.children.length) {
+    appendBotMessage(translations.welcome[state.currentLanguage]);
   }
-});
-input.addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    if (input.value.trim()) {
-      handleUserMessage(input.value.trim());
-      input.value = "";
-    }
+}
+
+function toggleAccessibilityMenu() {
+  accessibilityMenu.classList.toggle("hidden");
+}
+
+function applyFontScale() {
+  botWindow.style.setProperty("--chat-font-scale", String(state.fontScale));
+}
+
+function adjustFontScale(delta) {
+  state.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, state.fontScale + delta));
+  applyFontScale();
+}
+
+function toggleAccessibleTheme() {
+  state.isAccessibleTheme = !state.isAccessibleTheme;
+  botWindow.classList.toggle("accessible-theme", state.isAccessibleTheme);
+}
+
+sendBtn.addEventListener("click", () => handleUserMessage(input.value));
+
+input.addEventListener("input", autoResizeInput);
+input.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    handleUserMessage(input.value);
   }
 });
 
-// --- Bot flutuante ---
+resetBtn.addEventListener("click", resetChat);
+
+languageSelect.addEventListener("change", (event) => {
+  state.currentLanguage = event.target.value;
+  updateUiLanguage();
+});
+
+optionsToggle.addEventListener("click", toggleAccessibilityMenu);
+increaseFontBtn.addEventListener("click", () => adjustFontScale(FONT_SCALE_STEP));
+decreaseFontBtn.addEventListener("click", () => adjustFontScale(-FONT_SCALE_STEP));
+toggleThemeBtn.addEventListener("click", toggleAccessibleTheme);
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".options-menu-wrapper")) {
+    accessibilityMenu.classList.add("hidden");
+  }
+});
+
 botButton.addEventListener("click", () => {
-  const showing = botWindow.style.display === "flex";
-  botWindow.style.display = showing ? "none" : "flex";
-  botButton.classList.toggle("active", !showing);
+  const isOpen = botWindow.classList.toggle("open");
+  botButton.classList.toggle("active", isOpen);
 
-  if (!showing && messages.innerHTML === "") {
-    appendBotMessage(translations.welcome[currentLanguage]);
+  if (isOpen && !messages.children.length) {
+    appendBotMessage(translations.welcome[state.currentLanguage]);
+  }
+
+  if (isOpen) {
+    input.focus();
   }
 });
 
-// --- Alterar idioma ---
-languageSelect.addEventListener("change", e => {
-  currentLanguage = e.target.value;
-});
+applyFontScale();
+updateUiLanguage();
+autoResizeInput();

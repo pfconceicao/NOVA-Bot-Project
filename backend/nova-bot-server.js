@@ -1523,6 +1523,84 @@ function housingFallbackIfNeeded(lower, scored) {
   return null;
 }
 
+function genericHousingIntroIfNeeded(lower) {
+  const q = stripDiacriticsLower(lower).trim();
+
+  const isGenericHousingPrompt =
+    q === "alojamento" ||
+    q === "alojamento universitario" ||
+    q === "alojamento académico" ||
+    q === "alojamento academico" ||
+    q === "residencia" ||
+    q === "residencias" ||
+    q === "residencia universitaria" ||
+    q === "residencias universitarias";
+
+  if (!isGenericHousingPrompt) return null;
+
+  return {
+    answer:
+      "Na NOVA, o alojamento para estudantes é assegurado sobretudo pelos SASNOVA, com especial foco nas residências universitárias. Atualmente, destacam-se a Residência Universitária do Lumiar, a Residência Universitária Fraústo da Silva, no Campus da Caparica, em Almada, e a Residência Universitária Alfredo de Sousa, em Campolide, que se encontra encerrada para obras. Se quiser, posso indicar como funcionam as candidaturas, que residências existem ou quais são os contactos do Gabinete de Alojamento.",
+    citations: [],
+  };
+}
+
+function housingLocationFallbackIfNeeded(lower, topicHint = "") {
+  const qNorm = stripDiacriticsLower(lower);
+  const topicNorm = stripDiacriticsLower(topicHint);
+
+  const asksOfficeHours =
+    qNorm.includes("horario") ||
+    qNorm.includes("horarios") ||
+    qNorm.includes("funcionamento") ||
+    qNorm.includes("aberto") ||
+    qNorm.includes("atendimento");
+
+  const asksPhoneOrContact =
+    qNorm.includes("telefone") ||
+    qNorm.includes("telemovel") ||
+    qNorm.includes("contacto") ||
+    qNorm.includes("contato") ||
+    qNorm.includes("contactos") ||
+    qNorm.includes("contatos") ||
+    qNorm.includes("email") ||
+    qNorm.includes("e-mail");
+
+  const asksAddressOrLocation =
+    qNorm.includes("onde") ||
+    qNorm.includes("morada") ||
+    qNorm.includes("endereco") ||
+    qNorm.includes("campus") ||
+    qNorm.includes("local") ||
+    qNorm.includes("sede") ||
+    qNorm.includes("gabinete de alojamento");
+
+  const isHousingOfficeQuery =
+    qNorm.includes("alojamento") ||
+    qNorm.includes("residencia") ||
+    qNorm.includes("sasnova") ||
+    qNorm.includes("gabinete de alojamento") ||
+    topicNorm.includes("alojamento");
+
+  if (!isHousingOfficeQuery || (!asksOfficeHours && !asksPhoneOrContact && !asksAddressOrLocation)) {
+    return null;
+  }
+
+  if (asksOfficeHours) {
+    return {
+      answer:
+        "Nos documentos carregados não encontrei um horário específico do Gabinete de Alojamento. Os contactos indicados são o telefone +351 213 715 600, o e-mail alojamento@unl.pt e a página dos SASNOVA: https://sas.unl.pt/alojamento/.",
+      citations: [],
+    };
+  }
+
+  return {
+    answer:
+      "Os contactos do Gabinete de Alojamento dos SASNOVA são: telefone +351 213 715 600, e-mail alojamento@unl.pt e página https://sas.unl.pt/alojamento/.",
+    citations: [],
+  };
+}
+
 /// ───────── fallback específico para LOCALIZAÇÃO de reconhecimento de nível ─────────
 function nivelLocationFallbackIfNeeded(lower, scored) {
   // Verificar se é pergunta sobre ONDE solicitar reconhecimento de nível
@@ -1744,6 +1822,86 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "") {
 
   const q = String(lower ?? "").toLowerCase().trim();
   const topicNorm = stripDiacriticsLower(topicHint);
+  const qNorm = stripDiacriticsLower(q);
+
+  const asksOfficeHours =
+    qNorm.includes("horario") ||
+    qNorm.includes("horarios") ||
+    qNorm.includes("horario de funcionamento") ||
+    qNorm.includes("funcionamento") ||
+    qNorm.includes("aberto") ||
+    qNorm.includes("atendimento");
+
+  const asksPhoneOrContact =
+    qNorm.includes("telefone") ||
+    qNorm.includes("telemovel") ||
+    qNorm.includes("contacto") ||
+    qNorm.includes("contato") ||
+    qNorm.includes("contactos") ||
+    qNorm.includes("contatos");
+
+  const asksAddressOrLocation =
+    qNorm.includes("onde") ||
+    qNorm.includes("morada") ||
+    qNorm.includes("endereco") ||
+    qNorm.includes("campus") ||
+    qNorm.includes("localizacao") ||
+    qNorm.includes("localizacao") ||
+    qNorm.includes("local") ||
+    qNorm.includes("sede");
+
+  const mentionsAcademicServicesShorthand =
+    (qNorm.includes("academicos") || qNorm.includes("academico")) &&
+    !qNorm.includes("docente") &&
+    !qNorm.includes("docentes") &&
+    !qNorm.includes("professor") &&
+    !qNorm.includes("professores");
+
+  const isRecognitionOfficeQuery =
+    qNorm.includes("reconhecimento") ||
+    qNorm.includes("uaa") ||
+    qNorm.includes("unidade de assuntos academicos") ||
+    qNorm.includes("assuntos academicos") ||
+    qNorm.includes("servicos academicos") ||
+    mentionsAcademicServicesShorthand ||
+    qNorm.includes("reitoria") ||
+    topicNorm.includes("reconhecimento");
+
+  const ambiguityNote = mentionsAcademicServicesShorthand
+    ? "Assumi que se refere aos Serviços Académicos/UAA. "
+    : "";
+
+  const housingLocationFallback = housingLocationFallbackIfNeeded(lower, topicHint);
+  if (housingLocationFallback) {
+    console.log("✅ É pedido determinístico de contacto/localização de alojamento/SASNOVA");
+    return housingLocationFallback;
+  }
+
+  if (isRecognitionOfficeQuery && (asksOfficeHours || asksPhoneOrContact || asksAddressOrLocation)) {
+    console.log("✅ É pedido determinístico de contacto/localização/horário da UAA/Reitoria");
+
+    if (asksOfficeHours) {
+      return {
+        answer:
+          `${ambiguityNote}O horário de funcionamento da UAA (Unidade de Assuntos Académicos) da Reitoria da Universidade NOVA de Lisboa é das 10h30 às 12h30 e das 14h30 às 16h30, em dias úteis.`,
+        citations: [],
+      };
+    }
+
+    if (asksPhoneOrContact && !asksAddressOrLocation) {
+      return {
+        answer:
+          `${ambiguityNote}Para assuntos de reconhecimento académico na NOVA, pode contactar a Reitoria da Universidade NOVA de Lisboa, UAA - Unidade de Assuntos Académicos, no telefone 213715600. Atendimento no Campus de Campolide, 1099-085 Lisboa, em dias úteis das 10h30 às 12h30 e das 14h30 às 16h30.`,
+        citations: [],
+      };
+    }
+
+    return {
+      answer:
+        `${ambiguityNote}Para assuntos de reconhecimento académico na NOVA, o atendimento é na Reitoria da Universidade NOVA de Lisboa, UAA - Unidade de Assuntos Académicos, Campus de Campolide, 1099-085 Lisboa. Telefone: 213715600. Horário de funcionamento: 10h30 às 12h30 e das 14h30 às 16h30, em dias úteis.`,
+      citations: [],
+    };
+  }
 
   // Marcadores fortes de "localização/contacto"
   const hasWhereSignals =
@@ -2218,6 +2376,20 @@ const canCarryIntentAcrossTopicSwitch =
   previousTopicNorm.includes("reconhecimento") &&
   inferredTopicNorm.includes("reconhecimento");
 
+const isRecognitionSubtypeOnlyFollowUp =
+  hasQualifiedSessionTopic &&
+  previousTopicNorm.includes("reconhecimento") &&
+  (qTrim === "automatico" ||
+    qTrim === "automático" ||
+    qTrim === "nivel" ||
+    qTrim === "nível" ||
+    qTrim === "especifico" ||
+    qTrim === "específico");
+
+const recognitionSubtypeOnlyIntent = isRecognitionSubtypeOnlyFollowUp
+  ? previousIntent || "definition"
+  : null;
+
 const isFollowUp =
   !isExplicitTopicSwitch &&
   (FOLLOWUP_PATTERNS.some((re) => re.test(qTrim)) ||
@@ -2251,6 +2423,11 @@ if (canCarryIntentAcrossTopicSwitch) {
     routedQuestion = normalizedQuestion;
     console.log(`🧭 Follow-up normalizado para intenção ${currentIntent}: ${normalizedQuestion}`);
   }
+} else if (isRecognitionSubtypeOnlyFollowUp && inferredTopic) {
+  const normalizedQuestion = buildIntentCarryQuestion(recognitionSubtypeOnlyIntent, inferredTopic) || inferredTopic;
+  routedQuestion = normalizedQuestion;
+  effectiveIntent = recognitionSubtypeOnlyIntent;
+  console.log(`🧭 Subtipo de reconhecimento normalizado: ${normalizedQuestion}`);
 }
 
 // atualizar contexto da sessão
@@ -2341,6 +2518,7 @@ const outOfDomainPatterns = [
 const hasHardOutOfDomainSignal = outOfDomainPatterns.some((re) => re.test(lowerNorm));
 
 const isDomain =
+  isRecognitionSubtypeOnlyFollowUp ||
   isHousingIntent ||
   DOMAIN_KEYWORDS.some((k) => lower.includes(k)) ||
   lowerNorm.includes("reconhecimento") ||
@@ -2372,6 +2550,11 @@ if (
       "Posso ajudar apenas com alojamento universitário (residências e apoio dos SASNOVA). Se quiser, indico como solicitar alojamento académico na NOVA.",
     citations: [],
   });
+}
+
+const genericHousingIntro = genericHousingIntroIfNeeded(lower);
+if (genericHousingIntro) {
+  return sendJson(200, genericHousingIntro);
 }
 
 // ───────── RESPOSTAS DETERMINÍSTICAS ANTES DE EMBEDDINGS/LLM ─────────
