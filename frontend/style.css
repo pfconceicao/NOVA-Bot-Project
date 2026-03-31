@@ -25,10 +25,12 @@ body {
   bottom: 24px;
   width: 64px;
   height: 64px;
-  border: none;
+  border: 2px solid rgba(255, 255, 255, 0.92);
   border-radius: 50%;
   background: linear-gradient(145deg, #ffffff, #dff3e4);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 0 0 3px rgba(17, 122, 55, 0.22),
+    0 12px 28px rgba(0, 0, 0, 0.22);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -38,12 +40,18 @@ body {
 }
 
 #nova-bot-button:hover {
-  transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.26);
+  transform: translateY(-2px) rotate(-12deg) scale(1.05);
+  box-shadow:
+    0 0 0 4px rgba(17, 122, 55, 0.28),
+    0 16px 30px rgba(0, 0, 0, 0.26);
 }
 
 #nova-bot-button.active {
   background: linear-gradient(145deg, #b6efc0, #ffffff);
+  transform: translateY(-2px) rotate(-12deg) scale(1.05);
+  box-shadow:
+    0 0 0 4px rgba(17, 122, 55, 0.34),
+    0 16px 30px rgba(0, 0, 0, 0.26);
 }
 
 #nova-bot-button img {
@@ -51,6 +59,11 @@ body {
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
+  transition: filter 0.2s ease;
+}
+
+#nova-bot-button.active img {
+  filter: invert(1) hue-rotate(180deg);
 }
 
 #nova-bot-chatbox {

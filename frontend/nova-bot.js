@@ -17,6 +17,8 @@ const FONT_SCALE_MAX = 1.2;
 const FONT_SCALE_STEP = 0.05;
 const TYPEWRITER_MIN_DELAY_MS = 8;
 const TYPEWRITER_MAX_DELAY_MS = 20;
+const THINKING_DELAY_MIN_MS = 420;
+const THINKING_DELAY_MAX_MS = 760;
 const REQUEST_TIMEOUT_MS = 90000;
 
 const state = {
@@ -160,6 +162,12 @@ function getTypingDelay(textLength) {
   if (textLength > 280) return TYPEWRITER_MIN_DELAY_MS;
   if (textLength > 140) return 12;
   return TYPEWRITER_MAX_DELAY_MS;
+}
+
+function getThinkingDelay(textLength) {
+  if (textLength > 280) return THINKING_DELAY_MAX_MS;
+  if (textLength > 140) return 620;
+  return THINKING_DELAY_MIN_MS;
 }
 
 function setLoadingState(isLoading) {
@@ -397,6 +405,7 @@ async function handleUserMessage(rawText) {
 
   try {
     const responseData = await getBackendResponse(text);
+    await wait(getThinkingDelay(String(responseData?.answer ?? "").length));
     removeTypingIndicator(typingIndicator);
 
     if (await maybeShowTopicSuggestions(text, responseData)) {
