@@ -202,6 +202,15 @@ function buildScopedChunkPool(chunks, lowerNorm, topicNorm = "") {
     return filterByNeedles(["alojamento", "residencia", "sasnova"]);
   }
 
+  if (
+    scope.includes("servicos academicos") ||
+    scope.includes("uaa") ||
+    scope.includes("assuntos academicos") ||
+    scope.includes("reitoria")
+  ) {
+    return filterByNeedles(["servicos academicos", "uaa", "assuntos academicos", "reitoria"]);
+  }
+
   if (scope.includes("fundacao") || scope.includes("direito privado")) {
     return filterByNeedles(["fundacao", "direito privado", "regime"]);
   }
@@ -217,6 +226,17 @@ function inferTopicFromQuestion(lower, previousTopic = "") {
   const t = stripDiacriticsLower(lower);
   const previous = stripDiacriticsLower(previousTopic);
   const hasRecognitionContext = previous.includes("reconhecimento");
+
+  if (
+    t.includes("servicos academicos") ||
+    t.includes("servico academico") ||
+    t.includes("uaa") ||
+    t.includes("unidade de assuntos academicos") ||
+    t.includes("assuntos academicos") ||
+    t.includes("reitoria")
+  ) {
+    return "serviços académicos";
+  }
 
   // Reconhecimento automático
   if (t.includes("reconhecimento") && t.includes("automatico"))
@@ -1549,6 +1569,15 @@ function housingLocationFallbackIfNeeded(lower, topicHint = "") {
   const qNorm = stripDiacriticsLower(lower);
   const topicNorm = stripDiacriticsLower(topicHint);
 
+  const mentionsAcademicServices =
+    qNorm.includes("servicos academicos") ||
+    qNorm.includes("servico academico") ||
+    qNorm.includes("uaa") ||
+    qNorm.includes("unidade de assuntos academicos") ||
+    qNorm.includes("assuntos academicos") ||
+    qNorm.includes("reitoria") ||
+    qNorm.includes("reconhecimento");
+
   const asksOfficeHours =
     qNorm.includes("horario") ||
     qNorm.includes("horarios") ||
@@ -1581,6 +1610,10 @@ function housingLocationFallbackIfNeeded(lower, topicHint = "") {
     qNorm.includes("sasnova") ||
     qNorm.includes("gabinete de alojamento") ||
     topicNorm.includes("alojamento");
+
+  if (mentionsAcademicServices) {
+    return null;
+  }
 
   if (!isHousingOfficeQuery || (!asksOfficeHours && !asksPhoneOrContact && !asksAddressOrLocation)) {
     return null;
@@ -2313,7 +2346,6 @@ async function bootstrap() {
 // ───────── Follow-up + tópico de sessão (CORRIGIDO) ─────────
 
 // Padrões de perguntas elípticas típicas de continuação
-// Padrões de perguntas elípticas típicas de continuação
 const FOLLOWUP_PATTERNS = [
   /^e\b/i,
   /^e\s+(quanto|como|onde|quem|quais|qual)\b/i,
@@ -2351,7 +2383,22 @@ const hasQualifiedSessionTopic =
 // - MAS NUNCA se tem termos específicos de custos ou documentos (perguntas autónomas)
 const hasCostTerms = qTrim.includes("custa") || qTrim.includes("custo") || qTrim.includes("quanto");
 const hasDocTerms = qTrim.includes("documento") || qTrim.includes("entregar");
-const hasLocationTerms = qTrim.includes("onde") || qTrim.includes("morada") || qTrim.includes("endereço");
+const hasLocationTerms =
+  qTrim.includes("onde") ||
+  qTrim.includes("morada") ||
+  qTrim.includes("endereço") ||
+  qTrim.includes("endereco") ||
+  qTrim.includes("contacto") ||
+  qTrim.includes("contactos") ||
+  qTrim.includes("contato") ||
+  qTrim.includes("contatos") ||
+  qTrim.includes("telefone") ||
+  qTrim.includes("email") ||
+  qTrim.includes("e-mail") ||
+  qTrim.includes("reitoria") ||
+  qTrim.includes("serviços académicos") ||
+  qTrim.includes("servicos academicos") ||
+  qTrim.includes("uaa");
 
 // Perguntas curtas de custo sem tópico explícito devem herdar contexto da sessão.
 const isGenericCostQuestion =

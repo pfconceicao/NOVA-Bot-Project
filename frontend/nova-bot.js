@@ -105,7 +105,12 @@ function escapeHtml(value) {
 }
 
 function linkifyText(text) {
-  return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noreferrer noopener">$1</a>');
+  return text.replace(/(https?:\/\/[^\s<]+)/g, (match) => {
+    const parts = String(match).match(/^(https?:\/\/[^\s<]*?)([.),\];:!?]+)?$/);
+    const href = parts?.[1] || match;
+    const trailing = parts?.[2] || "";
+    return `<a href="${href}" target="_blank" rel="noreferrer noopener">${href}</a>${trailing}`;
+  });
 }
 
 function formatAnswer(answer) {
