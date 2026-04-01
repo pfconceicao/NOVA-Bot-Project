@@ -1,0 +1,113 @@
+{
+  "theme": "igualdade e inclusão",
+  "synonyms": [
+    "igualdade",
+    "inclusao",
+    "inclusão",
+    "igualdade de genero",
+    "igualdade de género",
+    "diversidade",
+    "assedio",
+    "assédio",
+    "discriminacao",
+    "discriminação"
+  ],
+  "links": {
+    "mainPageUrl": "https://www.unl.pt/sobre/missao-e-valores/igualdade-e-inclusao-2/",
+    "factsUrl": "https://www.unl.pt/sobre/missao-e-valores/igualdade-e-inclusao-2/factos-e-numeros/",
+    "reportsUrl": "https://www.unl.pt/sobre/missao-e-valores/igualdade-e-inclusao-2/relatorios-e-documentos/",
+    "policyUrl": "https://www.unl.pt/wp-content/uploads/2024/05/politica_da_universidade_nova_de_lisboa_para_igualdade_de_genero_oportunidades_iguais_e_diversidade.pdf",
+    "genderPlanUrl": "https://www.unl.pt/wp-content/uploads/2024/10/Plano-de-Igualdade-de-Genero-PT-copy.pdf",
+    "commitmentUrl": "https://www.unl.pt/wp-content/uploads/2024/05/pt_compromisso_ge_nova_signed.pdf",
+    "manifestoUrl": "https://eutopia-university.eu/eutopia-more-inclusion-manifesto/",
+    "inclusiveLanguageGuideUrl": "https://www.unl.pt/wp-content/uploads/2024/10/GULI_Web_A4_v3-1.pdf",
+    "conductCodeUrl": "https://diariodarepublica.pt/dr/detalhe/despacho/3658-2024-859210305",
+    "specialNeedsRegulationUrl": "https://diariodarepublica.pt/dr/detalhe/despacho/3658-2024-859210305",
+    "ukraineSupportUrl": "https://www.unl.pt/wp-content/uploads/2024/07/rectors_order_ukraine_no_94.pdf",
+    "resourcesProjectsUrl": "https://www.unl.pt/sobre/missao-e-valores/igualdade-e-inclusao-2/recursos-e-projetos/"
+  },
+  "general": {
+    "overview": [
+      "A Universidade NOVA de Lisboa foi pioneira a nível nacional na promoção da igualdade de género e inclusão e pretende ser, cada vez mais, um exemplo entre as universidades europeias de referência. Através da sua oferta curricular inovadora, investigação de vanguarda, políticas inclusivas e iniciativas estudantis, a NOVA fomenta uma cultura baseada nos valores da equidade, diversidade e inclusão e demonstra o seu compromisso em construir uma comunidade mais justa e inclusiva. Pode consultar a página principal aqui: {{mainPageUrl}}.",
+      "A NOVA apresenta a igualdade e inclusão como um compromisso institucional forte. A universidade destaca o seu papel pioneiro na promoção da igualdade de género e inclusão e procura afirmar-se como referência europeia, promovendo uma comunidade mais justa e inclusiva através da sua oferta curricular, investigação, políticas inclusivas e iniciativas estudantis. A página principal está disponível em {{mainPageUrl}}."
+    ],
+    "clarifyPrompt": [
+      "Posso ajudar sobre igualdade e inclusão na NOVA em vários pontos, por exemplo:\n• contactos do Gabinete de Igualdade e Inclusão\n• política e plano de igualdade de género\n• linguagem inclusiva\n• prevenção e combate ao assédio e discriminação\n• necessidades educativas especiais\n• isenção de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs\n• recursos e projetos\n\nSobre qual destes temas quer informação?",
+      "Dentro de igualdade e inclusão na NOVA, posso dar informação sobre:\n• contactos do Gabinete de Igualdade e Inclusão\n• política e plano de igualdade de género\n• guia de linguagem inclusiva\n• código de conduta para assédio e discriminação\n• necessidades educativas especiais\n• isenção de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs\n• recursos e projetos\n\nQual destes pontos pretende explorar?"
+    ],
+    "suggestedPrompts": [
+      "Quais são os contactos do Gabinete de Igualdade e Inclusão?",
+      "Onde posso consultar a política de igualdade de género da NOVA?",
+      "Existe um guia de linguagem inclusiva?",
+      "Onde encontro informação sobre prevenção do assédio e discriminação?",
+      "Há regulamento para estudantes com necessidades educativas especiais?",
+      "Existe isenção de propinas para refugiados da guerra na Ucrânia?"
+    ]
+  },
+  "contacts": {
+    "gabinete": {
+      "name": "Gabinete de Igualdade e Inclusão da NOVA",
+      "email": "igualdade@unl.pt",
+      "contactAnswer": "Pode contactar o Gabinete de Igualdade e Inclusão da NOVA através do e-mail {{email}}. Se quiser, também pode consultar a página principal do tema em {{mainPageUrl}}.",
+      "locationAnswer": "O contacto disponível para o Gabinete de Igualdade e Inclusão da NOVA é o e-mail {{email}}. Para mais informação, pode consultar {{mainPageUrl}}.",
+      "hoursAnswer": "Não tenho indicação de um horário de atendimento específico para o Gabinete de Igualdade e Inclusão da NOVA. O contacto disponível é o e-mail {{email}}."
+    }
+  },
+  "topics": {
+    "politica": {
+      "title": "Política da Universidade NOVA de Lisboa para a igualdade de género, oportunidades iguais e diversidade",
+      "answer": "A NOVA disponibiliza uma política institucional para a igualdade de género, oportunidades iguais e diversidade. Pode consultá-la diretamente aqui: {{policyUrl}}. Se quiser, também posso indicar o plano de igualdade de género e outros documentos associados.",
+      "link": "{{policyUrl}}"
+    },
+    "plano": {
+      "title": "Plano de igualdade de género",
+      "answer": "O plano de igualdade de género da NOVA está disponível em {{genderPlanUrl}}. Se quiser, também posso indicar a política institucional associada e outros documentos do tema.",
+      "link": "{{genderPlanUrl}}"
+    },
+    "compromisso": {
+      "title": "Compromisso da NOVA com a igualdade de género",
+      "answer": "A NOVA disponibiliza também um compromisso institucional com a igualdade de género, que pode consultar aqui: {{commitmentUrl}}.",
+      "link": "{{commitmentUrl}}"
+    },
+    "linguagemInclusiva": {
+      "title": "Guia para a utilização de linguagem inclusiva",
+      "answer": "A NOVA disponibiliza um guia para a utilização de linguagem inclusiva. Pode consultá-lo aqui: {{inclusiveLanguageGuideUrl}}.",
+      "link": "{{inclusiveLanguageGuideUrl}}"
+    },
+    "assedioDiscriminacao": {
+      "title": "Código de conduta para a prevenção e combate ao assédio e discriminação",
+      "answer": "A NOVA disponibiliza um código de conduta para a prevenção e combate ao assédio e discriminação. Pode consultá-lo aqui: {{conductCodeUrl}}.",
+      "link": "{{conductCodeUrl}}"
+    },
+    "necessidadesEducativasEspeciais": {
+      "title": "Regulamento do estudante com necessidades educativas especiais",
+      "answer": "A NOVA disponibiliza um regulamento para estudantes com necessidades educativas especiais. Pode consultá-lo aqui: {{specialNeedsRegulationUrl}}.",
+      "link": "{{specialNeedsRegulationUrl}}"
+    },
+    "refugiados": {
+      "title": "Isenção do pagamento de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs",
+      "answer": "Existe informação sobre isenção do pagamento de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs. Pode consultá-la aqui: {{ukraineSupportUrl}}.",
+      "link": "{{ukraineSupportUrl}}"
+    },
+    "recursosProjetos": {
+      "title": "Recursos e projetos",
+      "answer": "A NOVA reúne recursos e projetos ligados à igualdade e inclusão nesta página: {{resourcesProjectsUrl}}.",
+      "link": "{{resourcesProjectsUrl}}"
+    },
+    "factosNumeros": {
+      "title": "Factos e números",
+      "answer": "A página de factos e números sobre igualdade e inclusão na NOVA está disponível em {{factsUrl}}.",
+      "link": "{{factsUrl}}"
+    },
+    "relatoriosDocumentos": {
+      "title": "Relatórios e documentos",
+      "answer": "Os relatórios e documentos associados a igualdade e inclusão na NOVA podem ser consultados em {{reportsUrl}}.",
+      "link": "{{reportsUrl}}"
+    },
+    "manifestoEutopia": {
+      "title": "Manifesto de inclusão da aliança EUTOPIA",
+      "answer": "O manifesto de inclusão da aliança EUTOPIA pode ser consultado em {{manifestoUrl}}.",
+      "link": "{{manifestoUrl}}"
+    }
+  }
+}

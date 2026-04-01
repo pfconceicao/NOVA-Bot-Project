@@ -27,8 +27,14 @@ const FALLBACK = "Não encontrei informação relevante nos documentos disponív
 const OUT_OF_DOMAIN_MESSAGE =
   "Pergunta fora do âmbito académico da NOVA. Posso ajudar com reconhecimento, candidaturas, propinas, alojamento universitário e serviços académicos.";
 const recognitionContentPath = path.resolve("./data/recognition-content.json");
+const equalityInclusionContentPath = path.resolve("./data/equality-inclusion-content.json");
 const RECOGNITION_CONTENT = loadRecognitionContent(recognitionContentPath);
 const RECOGNITION_LINKS = RECOGNITION_CONTENT?.links ?? {};
+const EQUALITY_INCLUSION_CONTENT = loadThemeContent(
+  equalityInclusionContentPath,
+  "equality-inclusion-content.json"
+);
+const EQUALITY_INCLUSION_LINKS = EQUALITY_INCLUSION_CONTENT?.links ?? {};
 const EMOLUMENTS_URL =
   RECOGNITION_LINKS.emolumentsUrl ||
   "https://www.unl.pt/sites/default/files/deliberacao_702_2020_atualizacao_tabela_emolumentos.pdf";
@@ -36,11 +42,15 @@ const RESPONSE_CACHE_TTL_MS = 30 * 60 * 1000;
 const RESPONSE_CACHE_MAX_ENTRIES = 300;
 
 function loadRecognitionContent(filePath) {
+  return loadThemeContent(filePath, "recognition-content.json");
+}
+
+function loadThemeContent(filePath, label) {
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
-    throw new Error(`Falha ao carregar recognition-content.json: ${String(err?.message ?? err)}`);
+    throw new Error(`Falha ao carregar ${label}: ${String(err?.message ?? err)}`);
   }
 }
 
@@ -103,6 +113,36 @@ function getRecognitionContactText(contactKey, responseKey, extra = {}, variantS
   return interpolateTemplate(
     pickVariantText(contact?.[responseKey] ?? "", variantScope, `contact:${contactKey}:${responseKey}`),
     getRecognitionTemplateContext({ ...contact, ...extra })
+  );
+}
+
+function getEqualityTemplateContext(extra = {}) {
+  return {
+    ...EQUALITY_INCLUSION_LINKS,
+    ...extra,
+  };
+}
+
+function getEqualityGeneralText(key, variantScope = "") {
+  return interpolateTemplate(
+    pickVariantText(EQUALITY_INCLUSION_CONTENT?.general?.[key] ?? "", variantScope, `equality:general:${key}`),
+    getEqualityTemplateContext()
+  );
+}
+
+function getEqualityTopicText(topicKey, variantScope = "") {
+  const topic = EQUALITY_INCLUSION_CONTENT?.topics?.[topicKey] ?? {};
+  return interpolateTemplate(
+    pickVariantText(topic?.answer ?? "", variantScope, `equality:topic:${topicKey}`),
+    getEqualityTemplateContext(topic)
+  );
+}
+
+function getEqualityContactText(contactKey, responseKey, extra = {}, variantScope = "") {
+  const contact = EQUALITY_INCLUSION_CONTENT?.contacts?.[contactKey] ?? {};
+  return interpolateTemplate(
+    pickVariantText(contact?.[responseKey] ?? "", variantScope, `equality:contact:${contactKey}:${responseKey}`),
+    getEqualityTemplateContext({ ...contact, ...extra })
   );
 }
 
@@ -183,6 +223,25 @@ const DOMAIN_KEYWORDS = [
   "bolsa",
   "bolsas",
   "alojamento",
+  "igualdade",
+  "inclusao",
+  "inclusão",
+  "diversidade",
+  "genero",
+  "género",
+  "inclusiva",
+  "linguagem",
+  "assedio",
+  "assédio",
+  "discriminacao",
+  "discriminação",
+  "eutopia",
+  "refugiados",
+  "ucrania",
+  "ucrânia",
+  "afegas",
+  "afegãs",
+  "necessidades educativas especiais",
   "reconhecimento",
   "reconhecimentos",
   "emolumento",
@@ -209,9 +268,14 @@ const sessionContext = new Map();
 const sessionPendingState = new Map();
 const sessionLastIntent = new Map();
 const responseCache = new Map();
+const inFlightResponses = new Map();
 
 function buildResponseCacheKey(questionNorm, topicNorm = "", responseScope = "global") {
   return `${responseScope}::${topicNorm}::${questionNorm}`;
+}
+
+function clonePayload(payload) {
+  return JSON.parse(JSON.stringify(payload));
 }
 
 function getCachedResponse(cacheKey) {
@@ -225,7 +289,7 @@ function getCachedResponse(cacheKey) {
 
   return {
     statusCode: entry.statusCode,
-    payload: JSON.parse(JSON.stringify(entry.payload)),
+    payload: clonePayload(entry.payload),
     pendingState: entry.pendingState ?? null,
   };
 }
@@ -240,10 +304,25 @@ function setCachedResponse(cacheKey, statusCode, payload, pendingState = null) {
 
   responseCache.set(cacheKey, {
     statusCode,
-    payload: JSON.parse(JSON.stringify(payload)),
+    payload: clonePayload(payload),
     pendingState,
     createdAt: Date.now(),
   });
+}
+
+function unsupportedIdentityFallbackIfNeeded(lower) {
+  const q = stripDiacriticsLower(lower);
+  const asksWhoIsRector =
+    (q.includes("quem e o reitor") || q.includes("quem e reitor") || q.includes("nome do reitor")) &&
+    !q.includes("reitoria");
+
+  if (!asksWhoIsRector) return null;
+
+  return {
+    answer:
+      "Não tenho informação suficiente para identificar o reitor com segurança neste momento. Se quiser, posso indicar contactos da Reitoria ou ajudar noutro tema académico da NOVA.",
+    citations: [],
+  };
 }
 
 function buildScopedChunkPool(chunks, lowerNorm, topicNorm = "") {
@@ -275,6 +354,16 @@ function buildScopedChunkPool(chunks, lowerNorm, topicNorm = "") {
     scope.includes("sasnova")
   ) {
     return filterByNeedles(["alojamento", "residencia", "sasnova"]);
+  }
+
+  if (
+    scope.includes("igualdade") ||
+    scope.includes("inclusao") ||
+    scope.includes("diversidade") ||
+    scope.includes("assedio") ||
+    scope.includes("discriminacao")
+  ) {
+    return filterByNeedles(["igualdade", "inclusao", "diversidade", "assedio", "discriminacao"]);
   }
 
   if (
@@ -314,6 +403,19 @@ function inferTopicFromQuestion(lower, previousTopic = "") {
   const previous = stripDiacriticsLower(previousTopic);
   const hasRecognitionContext = previous.includes("reconhecimento");
   const recognitionSubtypeShorthand = detectRecognitionSubtypeShorthand(lower);
+
+  if (
+    t.includes("igualdade") ||
+    t.includes("inclusao") ||
+    t.includes("diversidade") ||
+    t.includes("igualdade de genero") ||
+    t.includes("assedio") ||
+    t.includes("discriminacao") ||
+    t.includes("linguagem inclusiva") ||
+    t.includes("necessidades educativas especiais")
+  ) {
+    return "igualdade e inclusão";
+  }
 
   if (
     t.includes("servicos academicos") ||
@@ -429,6 +531,150 @@ function buildIntentCarryQuestion(intent, topic) {
     default:
       return null;
   }
+}
+
+function detectEqualityTopicKey(lower, topicHint = "") {
+  const q = stripDiacriticsLower(lower);
+  const topic = stripDiacriticsLower(topicHint);
+  const hasEqualityContext = topic.includes("igualdade") || topic.includes("inclusao");
+  const mentionsEqualityOffice =
+    q.includes("gabinete de igualdade") ||
+    q.includes("gabinete de igualdade e inclusao") ||
+    q.includes("gabinete de inclusao") ||
+    (q.includes("gabinete") && (q.includes("igualdade") || q.includes("inclusao") || hasEqualityContext));
+
+  if (
+    q.includes("contacto") ||
+    q.includes("contactos") ||
+    q.includes("email") ||
+    mentionsEqualityOffice
+  ) {
+    return "contacts";
+  }
+
+  if (
+    q.includes("ha um gabinete") ||
+    q.includes("há um gabinete") ||
+    q.includes("existe um gabinete")
+  ) {
+    if (mentionsEqualityOffice || q.includes("inclusao") || q.includes("igualdade")) {
+      return "contacts";
+    }
+  }
+
+  if (q.includes("horario") || q.includes("horarios")) {
+    return "hours";
+  }
+
+  if (q.includes("politica") || q.includes("oportunidades iguais")) return "politica";
+  if (q.includes("plano de igualdade") || (q.includes("plano") && q.includes("genero"))) return "plano";
+  if (q.includes("compromisso") && q.includes("genero")) return "compromisso";
+  if (q.includes("linguagem inclusiva") || (q.includes("guia") && q.includes("inclusiva"))) return "linguagemInclusiva";
+  if (q.includes("assedio") || q.includes("discriminacao") || q.includes("codigo de conduta")) return "assedioDiscriminacao";
+  if (q.includes("necessidades educativas especiais")) return "necessidadesEducativasEspeciais";
+  if (q.includes("refugiados") || q.includes("ucrania") || q.includes("afegas") || q.includes("propinas") && (q.includes("ucrania") || q.includes("afegas"))) return "refugiados";
+  if (q.includes("recursos") || q.includes("projetos")) return "recursosProjetos";
+  if (q.includes("factos") || q.includes("numeros")) return "factosNumeros";
+  if (q.includes("relatorios") || q.includes("documentos")) return "relatoriosDocumentos";
+  if (q.includes("eutopia") || q.includes("manifesto")) return "manifestoEutopia";
+
+  if (hasEqualityContext) {
+    if (q === "contactos" || q === "contacto" || q === "email") return "contacts";
+    if (q.includes("gabinete")) return "contacts";
+    if (q.includes("politica")) return "politica";
+    if (q.includes("plano")) return "plano";
+    if (q.includes("compromisso")) return "compromisso";
+    if (q.includes("guia") || q.includes("linguagem")) return "linguagemInclusiva";
+    if (q.includes("codigo de conduta")) return "assedioDiscriminacao";
+    if (q.includes("necessidades especiais")) return "necessidadesEducativasEspeciais";
+    if (q.includes("refugiados") || q.includes("ucrania") || q.includes("afegas")) return "refugiados";
+    if (q.includes("recursos") || q.includes("projetos")) return "recursosProjetos";
+    if (q.includes("factos") || q.includes("numeros")) return "factosNumeros";
+    if (q.includes("relatorios") || q.includes("documentos")) return "relatoriosDocumentos";
+    if (q.includes("eutopia") || q.includes("manifesto")) return "manifestoEutopia";
+  }
+
+  if (hasEqualityContext && (q === "onde" || q === "quais" || q === "qual" || q === "mais informacao" || q === "mais informação")) {
+    return "overview";
+  }
+
+  return null;
+}
+
+function equalityFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
+  const q = stripDiacriticsLower(lower);
+  const topic = stripDiacriticsLower(topicHint);
+  const mentionsEqualityTheme =
+    q.includes("igualdade") ||
+    q.includes("inclusao") ||
+    q.includes("diversidade") ||
+    q.includes("genero") ||
+    q.includes("assedio") ||
+    q.includes("discriminacao") ||
+    topic.includes("igualdade") ||
+    topic.includes("inclusao");
+
+  if (!mentionsEqualityTheme) return null;
+
+  const equalityTopicKey = detectEqualityTopicKey(lower, topicHint);
+  const asksDefinition =
+    q.includes("o que e") ||
+    q.includes("explica") ||
+    q === "igualdade" ||
+    q === "inclusao" ||
+    q === "igualdade e inclusao" ||
+    q === "igualdade e inclusão";
+  const isBroadEqualityPrompt =
+    asksDefinition ||
+    q.includes("igualdade e inclusao") ||
+    q.includes("igualdade e inclusão") ||
+    q.includes("igualdade de genero") ||
+    q.includes("igualdade de género");
+  const isShortContextualPrompt =
+    (topic.includes("igualdade") || topic.includes("inclusao")) &&
+    q.length <= 32;
+
+  if (equalityTopicKey === "contacts") {
+    console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (contactos)");
+    return {
+      answer: getEqualityContactText("gabinete", "contactAnswer", {}, variantScope),
+      citations: [],
+    };
+  }
+
+  if (equalityTopicKey === "hours") {
+    console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (horário)");
+    return {
+      answer: getEqualityContactText("gabinete", "hoursAnswer", {}, variantScope),
+      citations: [],
+    };
+  }
+
+  if (equalityTopicKey && equalityTopicKey !== "overview") {
+    console.log(`✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (${equalityTopicKey})`);
+    return {
+      answer: getEqualityTopicText(equalityTopicKey, variantScope),
+      citations: [],
+    };
+  }
+
+  if (isBroadEqualityPrompt) {
+    console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (overview)");
+    return {
+      answer: getEqualityGeneralText("overview", variantScope),
+      citations: [],
+    };
+  }
+
+  if (isShortContextualPrompt) {
+    console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (clarify)");
+    return {
+      answer: getEqualityGeneralText("clarifyPrompt", variantScope),
+      citations: [],
+    };
+  }
+
+  return null;
 }
 
 function cosineSimilarity(vecA, vecB) {
@@ -2436,6 +2682,8 @@ const recognitionSubtypeShorthand = detectRecognitionSubtypeShorthand(qTrim);
 const hasQualifiedSessionTopic =
   previousTopicNorm.includes("reconhecimento") ||
   previousTopicNorm.includes("alojamento") ||
+  previousTopicNorm.includes("igualdade") ||
+  previousTopicNorm.includes("inclusao") ||
   previousTopicNorm.includes("propina") ||
   previousTopicNorm.includes("candidatura") ||
   previousTopicNorm.includes("estatuto") ||
@@ -2584,13 +2832,55 @@ if (trackSession) {
 
 const cacheKey = buildResponseCacheKey(lowerNorm, topicHintNorm, responseVariantScope);
 
-const sendJson = (statusCode, payload, { cacheable = true, pendingState: nextPendingState = null } = {}) => {
+const inFlightEntry = inFlightResponses.get(cacheKey);
+if (inFlightEntry) {
+  console.log("⏳ In-flight hit");
+  try {
+    const sharedResponse = await inFlightEntry.promise;
+    if (trackSession) {
+      if (sharedResponse.pendingState) sessionPendingState.set(sessionId, sharedResponse.pendingState);
+      else sessionPendingState.delete(sessionId);
+    }
+    return res.status(sharedResponse.statusCode).json(clonePayload(sharedResponse.payload));
+  } catch {
+    console.log("⚠️ Pedido partilhado falhou; a processar novamente");
+  }
+}
+
+let resolveInFlightResponse;
+let rejectInFlightResponse;
+const inFlightPromise = new Promise((resolve, reject) => {
+  resolveInFlightResponse = resolve;
+  rejectInFlightResponse = reject;
+});
+inFlightResponses.set(cacheKey, { promise: inFlightPromise });
+
+const finishInFlight = (result) => {
+  if (resolveInFlightResponse) resolveInFlightResponse(result);
+  inFlightResponses.delete(cacheKey);
+};
+
+const failInFlight = (error) => {
+  if (rejectInFlightResponse) rejectInFlightResponse(error);
+  inFlightResponses.delete(cacheKey);
+};
+
+const sendJson = (statusCode, payload, { cacheable = true, pendingState: nextPendingState = null, debugLabel = "" } = {}) => {
+  if (debugLabel) {
+    console.log(`🧭 Resposta via: ${debugLabel}`);
+  }
+
   if (trackSession) {
     if (nextPendingState) sessionPendingState.set(sessionId, nextPendingState);
     else sessionPendingState.delete(sessionId);
   }
 
   if (cacheable) setCachedResponse(cacheKey, statusCode, payload, nextPendingState);
+  finishInFlight({
+    statusCode,
+    payload: clonePayload(payload),
+    pendingState: nextPendingState,
+  });
   return res.status(statusCode).json(payload);
 };
 
@@ -2634,6 +2924,8 @@ const hasHardOutOfDomainSignal = outOfDomainPatterns.some((re) => re.test(lowerN
 const isDomain =
   isRecognitionSubtypeOnlyFollowUp ||
   isHousingIntent ||
+  topicHintNorm.includes("igualdade") ||
+  topicHintNorm.includes("inclusao") ||
   DOMAIN_KEYWORDS.some((k) => lower.includes(k)) ||
   lowerNorm.includes("reconhecimento") ||
   lowerNorm.includes("dges") ||
@@ -2651,7 +2943,7 @@ if (hasHardOutOfDomainSignal || (!isDomain && !isFollowUp)) {
       citations: [],
       blocked: true,
       reason: "out_of_domain",
-    });
+    }, { debugLabel: "blocked:out_of_domain" });
 }
 
 if (
@@ -2663,12 +2955,22 @@ if (
     answer:
       "Posso ajudar apenas com alojamento universitário (residências e apoio dos SASNOVA). Se quiser, indico como solicitar alojamento académico na NOVA.",
     citations: [],
-  });
+  }, { debugLabel: "deterministic:housing:scope_guard" });
 }
 
 const genericHousingIntro = genericHousingIntroIfNeeded(lower);
 if (genericHousingIntro) {
-  return sendJson(200, genericHousingIntro);
+  return sendJson(200, genericHousingIntro, { debugLabel: "deterministic:housing:overview" });
+}
+
+const unsupportedIdentityFallback = unsupportedIdentityFallbackIfNeeded(routedLower);
+if (unsupportedIdentityFallback) {
+  return sendJson(200, unsupportedIdentityFallback, { debugLabel: "deterministic:unsupported_identity" });
+}
+
+const equalityFallback = equalityFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
+if (equalityFallback) {
+  return sendJson(200, equalityFallback, { debugLabel: "deterministic:equality_inclusion" });
 }
 
 // ───────── RESPOSTAS DETERMINÍSTICAS ANTES DE EMBEDDINGS/LLM ─────────
@@ -2708,21 +3010,21 @@ if (asksRecognitionValuesOverview) {
   return sendJson(200, {
     answer: getRecognitionGeneralText("valuesOverview", responseVariantScope),
     citations: [],
-  });
+  }, { debugLabel: "deterministic:recognition:values_overview" });
 }
 
 if (asksGeneralRecognitionOverview) {
   return sendJson(200, {
     answer: getRecognitionGeneralText("overview", responseVariantScope),
     citations: [],
-  }, { pendingState: "generic_recognition_explain" });
+  }, { pendingState: "generic_recognition_explain", debugLabel: "deterministic:recognition:overview" });
 }
 
 if (asksGenericRecognitionExplanationFollowUp) {
   return sendJson(200, {
     answer: getRecognitionGeneralText("explainPrompt", responseVariantScope),
     citations: [],
-  });
+  }, { debugLabel: "deterministic:recognition:explain_prompt" });
 }
 
 if (mentionsReconhecimento && !mentionsType && !topicHasType) {
@@ -2730,7 +3032,7 @@ if (mentionsReconhecimento && !mentionsType && !topicHasType) {
   return sendJson(200, {
     answer: getRecognitionGeneralText("clarifyTypePrompt", responseVariantScope),
     citations: [],
-  });
+  }, { debugLabel: "deterministic:recognition:clarify_type" });
 }
 
 if (
@@ -2741,7 +3043,7 @@ if (
   return sendJson(200, {
     answer: getRecognitionGeneralText("emolumentsPrompt", responseVariantScope),
     citations: [],
-  });
+  }, { debugLabel: "deterministic:recognition:emoluments" });
 }
 
 const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
@@ -3404,8 +3706,9 @@ const citationsOut = validCitations.slice(0, 3).map((c) => {
 return sendJson(200, {
   answer: answerText,
   citations: citationsOut,
-});
+}, { debugLabel: "retrieval:validated_response" });
 } catch (err) {
+  failInFlight(err);
   console.error("🔥 Erro ao processar pergunta:", err);
   return res.status(500).json({ error: "Erro ao processar pergunta" });
 }
