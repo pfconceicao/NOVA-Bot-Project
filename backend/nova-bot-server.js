@@ -26,10 +26,85 @@ const MAX_CONTEXT_CHARS = 6500;
 const FALLBACK = "Não encontrei informação relevante nos documentos disponíveis.";
 const OUT_OF_DOMAIN_MESSAGE =
   "Pergunta fora do âmbito académico da NOVA. Posso ajudar com reconhecimento, candidaturas, propinas, alojamento universitário e serviços académicos.";
+const recognitionContentPath = path.resolve("./data/recognition-content.json");
+const RECOGNITION_CONTENT = loadRecognitionContent(recognitionContentPath);
+const RECOGNITION_LINKS = RECOGNITION_CONTENT?.links ?? {};
 const EMOLUMENTS_URL =
+  RECOGNITION_LINKS.emolumentsUrl ||
   "https://www.unl.pt/sites/default/files/deliberacao_702_2020_atualizacao_tabela_emolumentos.pdf";
 const RESPONSE_CACHE_TTL_MS = 30 * 60 * 1000;
 const RESPONSE_CACHE_MAX_ENTRIES = 300;
+
+function loadRecognitionContent(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Falha ao carregar recognition-content.json: ${String(err?.message ?? err)}`);
+  }
+}
+
+function interpolateTemplate(template, context = {}) {
+  return String(template ?? "").replace(/{{(\w+)}}/g, (_, key) => String(context[key] ?? ""));
+}
+
+function hashString(value) {
+  const input = String(value ?? "");
+  let hash = 0;
+
+  for (let index = 0; index < input.length; index++) {
+    hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+  }
+
+  return hash;
+}
+
+function pickVariantText(value, variantScope = "", variantKey = "") {
+  const variants = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray(value.variants)
+      ? value.variants
+      : [value];
+
+  const normalized = variants
+    .map((entry) => String(entry ?? "").trim())
+    .filter(Boolean);
+
+  if (normalized.length === 0) return "";
+  if (normalized.length === 1) return normalized[0];
+
+  const variantHash = hashString(`${variantScope}::${variantKey}`);
+  return normalized[variantHash % normalized.length];
+}
+
+function getRecognitionTemplateContext(extra = {}) {
+  return {
+    ...RECOGNITION_LINKS,
+    ...extra,
+  };
+}
+
+function getRecognitionGeneralText(key, variantScope = "") {
+  return interpolateTemplate(
+    pickVariantText(RECOGNITION_CONTENT?.general?.[key] ?? "", variantScope, `general:${key}`),
+    getRecognitionTemplateContext()
+  );
+}
+
+function getRecognitionTypeText(typeKey, key, variantScope = "") {
+  return interpolateTemplate(
+    pickVariantText(RECOGNITION_CONTENT?.types?.[typeKey]?.[key] ?? "", variantScope, `type:${typeKey}:${key}`),
+    getRecognitionTemplateContext()
+  );
+}
+
+function getRecognitionContactText(contactKey, responseKey, extra = {}, variantScope = "") {
+  const contact = RECOGNITION_CONTENT?.contacts?.[contactKey] ?? {};
+  return interpolateTemplate(
+    pickVariantText(contact?.[responseKey] ?? "", variantScope, `contact:${contactKey}:${responseKey}`),
+    getRecognitionTemplateContext({ ...contact, ...extra })
+  );
+}
 
 async function checkOllamaModelAvailability() {
   try {
@@ -135,8 +210,8 @@ const sessionPendingState = new Map();
 const sessionLastIntent = new Map();
 const responseCache = new Map();
 
-function buildResponseCacheKey(questionNorm, topicNorm = "") {
-  return `${topicNorm}::${questionNorm}`;
+function buildResponseCacheKey(questionNorm, topicNorm = "", responseScope = "global") {
+  return `${responseScope}::${topicNorm}::${questionNorm}`;
 }
 
 function getCachedResponse(cacheKey) {
@@ -222,10 +297,23 @@ function buildScopedChunkPool(chunks, lowerNorm, topicNorm = "") {
   return chunks;
 }
 
+function detectRecognitionSubtypeShorthand(text) {
+  const t = stripDiacriticsLower(text).trim();
+
+  if (!t) return null;
+
+  if (/^(?:e\s+)?(?:(?:do|de|o)\s+)?automatico$/.test(t)) return "automatico";
+  if (/^(?:e\s+)?(?:(?:de|do|o)\s+)?nivel$/.test(t)) return "nivel";
+  if (/^(?:e\s+)?(?:(?:do|de|o)\s+)?especifico$/.test(t)) return "especifico";
+
+  return null;
+}
+
 function inferTopicFromQuestion(lower, previousTopic = "") {
   const t = stripDiacriticsLower(lower);
   const previous = stripDiacriticsLower(previousTopic);
   const hasRecognitionContext = previous.includes("reconhecimento");
+  const recognitionSubtypeShorthand = detectRecognitionSubtypeShorthand(lower);
 
   if (
     t.includes("servicos academicos") ||
@@ -258,6 +346,9 @@ function inferTopicFromQuestion(lower, previousTopic = "") {
     return "reconhecimento";
 
   if (hasRecognitionContext) {
+    if (recognitionSubtypeShorthand === "automatico") return "reconhecimento automático";
+    if (recognitionSubtypeShorthand === "nivel") return "reconhecimento de nível";
+    if (recognitionSubtypeShorthand === "especifico") return "reconhecimento específico";
     if (t.includes("automatico")) return "reconhecimento automático";
     if (t.includes("nivel")) return "reconhecimento de nível";
     if (t.includes("especifico")) return "reconhecimento específico";
@@ -1698,13 +1789,13 @@ function nivelLocationFallbackIfNeeded(lower, scored) {
   console.log("⚠️  Usando resposta padrão para localização de reconhecimento de nível");
   
   return {
-    answer: "O reconhecimento de nível deve ser solicitado através dos serviços académicos da instituição de ensino superior portuguesa onde pretende ingressar. Para processos na Universidade NOVA de Lisboa, pode contactar a Reitoria ou os Serviços Académicos no Campus de Campolide. Em alternativa, para reconhecimentos a nível nacional, pode dirigir-se à Direção-Geral do Ensino Superior (DGES).",
+    answer: getRecognitionTypeText("nivel", "where"),
     citations: []
   };
 }
 
 // ───────── fallback específico para reconhecimento de nível ─────────
-function nivelRecognitionFallbackIfNeeded(lower, scored) {
+function nivelRecognitionFallbackIfNeeded(lower, scored, variantScope = "") {
     const isNivelRecognition = 
         lower.includes("reconhecimento") && 
         (lower.includes("nível") || lower.includes("nivel")) &&
@@ -1715,17 +1806,7 @@ function nivelRecognitionFallbackIfNeeded(lower, scored) {
     console.log("🔍 PROCURANDO: Valores para 'reconhecimento de nível'");
     
     // RESPOSTA FIXA - já que sabemos exatamente quais são os valores
-    const fixedAnswer = `Para reconhecimento de nível:
-
-Sem conversão da classificação final:
-• Licenciatura, Mestrado ou Doutoramento (obtido em países da UE): 268,00 €
-• Licenciatura ou doutoramento (obtido em países exteriores à UE): 650,00 €
-• Mestrado (obtido em países exteriores à UE): 520,00 €
-
-Com conversão da classificação final:
-• Licenciatura ou Mestrado (obtido em países da União Europeia (UE): 298,00 €
-• Licenciatura (obtido em países exteriores à UE): 680,00 €
-• Mestrado (obtido em países exteriores à UE): 550,00 €`;
+    const fixedAnswer = getRecognitionTypeText("nivel", "cost", variantScope);
 
     // Encontrar qualquer chunk para a citação
     for (const c of scored.slice(0, 5)) {
@@ -1749,7 +1830,7 @@ Com conversão da classificação final:
 }
 
 // ───────── fallback específico para reconhecimento académico (VERSÃO SIMPLES) ─────────
-function academicRecognitionFallbackIfNeeded(lower, scored) {
+function academicRecognitionFallbackIfNeeded(lower, scored, variantScope = "") {
   // Verificar se é pergunta sobre custos de reconhecimento académico
   const isAcademicRecognition = 
     lower.includes("reconhecimento") && 
@@ -1797,7 +1878,10 @@ function academicRecognitionFallbackIfNeeded(lower, scored) {
   }
   
   console.log("❌ NÃO ENCONTREI: Valores específicos para reconhecimento académico");
-  return null;
+  return {
+    answer: getRecognitionTypeText("automatico", "cost", variantScope),
+    citations: [],
+  };
 }
 
 // ───────── CHAMADA AO LLM ─────────
@@ -1850,7 +1934,7 @@ RESPONDA EM JSON (sem markdown, sem prefixo):
 }
 
 // ───────── fallback específico para localização ─────────
-function locationFallbackIfNeeded(lower, scored, topicHint = "") {
+function locationFallbackIfNeeded(lower, scored, topicHint = "", variantScope = "") {
   console.log("📍 locationFallbackIfNeeded ANALISANDO:", lower);
 
   const q = String(lower ?? "").toLowerCase().trim();
@@ -1916,7 +2000,7 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "") {
     if (asksOfficeHours) {
       return {
         answer:
-          `${ambiguityNote}O horário de funcionamento da UAA (Unidade de Assuntos Académicos) da Reitoria da Universidade NOVA de Lisboa é das 10h30 às 12h30 e das 14h30 às 16h30, em dias úteis.`,
+            `${ambiguityNote}${getRecognitionContactText("uaa", "hoursAnswer", {}, variantScope)}`,
         citations: [],
       };
     }
@@ -1924,14 +2008,14 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "") {
     if (asksPhoneOrContact && !asksAddressOrLocation) {
       return {
         answer:
-          `${ambiguityNote}Para assuntos de reconhecimento académico na NOVA, pode contactar a Reitoria da Universidade NOVA de Lisboa, UAA - Unidade de Assuntos Académicos, no telefone 213715600. Atendimento no Campus de Campolide, 1099-085 Lisboa, em dias úteis das 10h30 às 12h30 e das 14h30 às 16h30.`,
+            `${ambiguityNote}${getRecognitionContactText("uaa", "contactAnswer", {}, variantScope)}`,
         citations: [],
       };
     }
 
     return {
       answer:
-        `${ambiguityNote}Para assuntos de reconhecimento académico na NOVA, o atendimento é na Reitoria da Universidade NOVA de Lisboa, UAA - Unidade de Assuntos Académicos, Campus de Campolide, 1099-085 Lisboa. Telefone: 213715600. Horário de funcionamento: 10h30 às 12h30 e das 14h30 às 16h30, em dias úteis.`,
+          `${ambiguityNote}${getRecognitionContactText("uaa", "locationAnswer", {}, variantScope)}`,
       citations: [],
     };
   }
@@ -1983,8 +2067,7 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "") {
   if (isNivelRecognitionTopic) {
     console.log("✅ É reconhecimento de nível + localização");
 
-    const answer =
-      "Para reconhecimento de nível, o pedido é submetido através do formulário online da DGES: https://www.dges.gov.pt/recon/formulario.";
+    const answer = getRecognitionTypeText("nivel", "where", variantScope);
 
     return {
       answer,
@@ -1999,8 +2082,7 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "") {
   if (isAutomaticRecognitionTopic) {
     console.log("✅ É reconhecimento automático + localização");
     return {
-      answer:
-        "Para reconhecimento automático, o pedido é feito através do formulário online da DGES: https://www.dges.gov.pt/recon/formulario.",
+      answer: getRecognitionTypeText("automatico", "where", variantScope),
       citations: [],
     };
   }
@@ -2013,8 +2095,7 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "") {
   if (isSpecificRecognitionTopic) {
     console.log("✅ É reconhecimento específico + localização");
     return {
-      answer:
-        "Para reconhecimento específico, o pedido é submetido através do formulário online da DGES: https://www.dges.gov.pt/recon/formulario.",
+      answer: getRecognitionTypeText("especifico", "where", variantScope),
       citations: [],
     };
   }
@@ -2029,7 +2110,7 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "") {
 }
 
 // ───────── fallback determinístico para reconhecimento automático ─────────
-function automaticRecognitionFallbackIfNeeded(lower, topicHint = "") {
+function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
 
@@ -2078,48 +2159,42 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "") {
 
   if (isDefinitionQuestion) {
     return {
-      answer:
-        "O reconhecimento automático é o ato que permite reconhecer genericamente um grau ou diploma de ensino superior estrangeiro cujo nível, objetivos e natureza sejam idênticos aos graus portugueses de licenciado, mestre e doutor, ou de diploma de técnico superior profissional, desde que conste do elenco fixado pela Comissão de Reconhecimento de Graus e Diplomas Estrangeiros.",
+      answer: getRecognitionTypeText("automatico", "definition", variantScope),
       citations: [],
     };
   }
 
   if (isDegreesQuestion) {
     return {
-      answer:
-        "Aplica-se aos graus/diplomas abrangidos pelo elenco oficial da DGES. Pode verificar aqui: https://www.dges.gov.pt/recon/formulario e consultar a tabela aqui: https://www.dges.gov.pt/sites/default/files/quadros_deliberacoes_-_2019pt.pdf.",
+      answer: getRecognitionTypeText("automatico", "degrees", variantScope),
       citations: [],
     };
   }
 
   if (isWhereQuestion) {
     return {
-      answer:
-        "Para reconhecimento automático, o pedido é feito através do formulário online da DGES: https://www.dges.gov.pt/recon/formulario.",
+      answer: getRecognitionTypeText("automatico", "where", variantScope),
       citations: [],
     };
   }
 
   if (isDocumentsQuestion) {
     return {
-      answer:
-        "Deve anexar ao formulário online: (1) cópia do diploma; (2) documento com a classificação final atribuída, a escala de classificações utilizada e a classificação mínima de aprovação. Este segundo documento é aplicável quando pretende conversão da nota final para a escala portuguesa.",
+      answer: getRecognitionTypeText("automatico", "documents", variantScope),
       citations: [],
     };
   }
 
   if (isTimeQuestion) {
     return {
-      answer:
-        "O prazo é de 30 dias após a instrução completa do processo e o respetivo pagamento.",
+      answer: getRecognitionTypeText("automatico", "time", variantScope),
       citations: [],
     };
   }
 
   if (isCostQuestion) {
     return {
-      answer:
-        `Custa 40€ sem conversão da classificação final para a escala portuguesa (0 a 20 valores), ou 60€ com conversão da classificação para a escala portuguesa. Tabela de emolumentos: ${EMOLUMENTS_URL}.`,
+      answer: getRecognitionTypeText("automatico", "cost", variantScope),
       citations: [],
     };
   }
@@ -2128,7 +2203,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "") {
 }
 
 // ───────── fallback determinístico para reconhecimento de nível ─────────
-function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "") {
+function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
 
@@ -2172,40 +2247,35 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "") {
 
   if (isDefinitionQuestion) {
     return {
-      answer:
-        "O reconhecimento de nível é o ato que permite reconhecer por comparabilidade, de forma individualizada, um grau ou diploma de ensino superior estrangeiro como tendo um nível correspondente a um grau académico ou diploma de ensino superior português.",
+      answer: getRecognitionTypeText("nivel", "definition", variantScope),
       citations: [],
     };
   }
 
   if (isWhereQuestion) {
     return {
-      answer:
-        "Para reconhecimento de nível, o pedido é submetido através do formulário online da DGES: https://www.dges.gov.pt/recon/formulario.",
+      answer: getRecognitionTypeText("nivel", "where", variantScope),
       citations: [],
     };
   }
 
   if (isDocumentsQuestion) {
     return {
-      answer:
-        "Deve anexar ao formulário online:\n• Cópia do Diploma;\n• Histórico escolar;\n• Programa das disciplinas com a informação dos conteúdos curriculares estudados em cada disciplina;\n• Declaração da Universidade mencionando a classificação final no seu curso, a escala numérica de classificação final (ex. de 0 a 10) e a nota mínima de aprovação (caso pretenda a conversão da média final para a escala portuguesa);\n• Trabalho final: Monografia (Licenciatura), Dissertação (Mestrado) ou Tese (PhD) em PDF (se aplicável).",
+      answer: getRecognitionTypeText("nivel", "documents", variantScope),
       citations: [],
     };
   }
 
   if (isCostQuestion) {
     return {
-      answer:
-        `Reconhecimento de nível sem conversão da classificação final: Licenciatura, Mestrado ou Doutoramento (obtidos em países da UE): 268,00 €; Licenciatura ou Doutoramento (obtidos em países exteriores à UE): 650,00 €; Mestrado (obtido em países exteriores à UE): 520,00 €. Reconhecimento de nível com conversão da classificação final: Licenciatura ou Mestrado (obtidos em países da UE): 298,00 €; Licenciatura (obtida em países exteriores à UE): 680,00 €; Mestrado (obtido em países exteriores à UE): 550,00 €. Tabela de emolumentos: ${EMOLUMENTS_URL}.`,
+      answer: getRecognitionTypeText("nivel", "cost", variantScope),
       citations: [],
     };
   }
 
   if (isTimeQuestion) {
     return {
-      answer:
-        "O prazo é de 90 dias úteis após a instrução completa do processo e o respetivo pagamento.",
+      answer: getRecognitionTypeText("nivel", "time", variantScope),
       citations: [],
     };
   }
@@ -2214,7 +2284,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "") {
 }
 
 // ───────── fallback determinístico para reconhecimento específico ─────────
-function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "") {
+function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
 
@@ -2258,40 +2328,35 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "")
 
   if (isDefinitionQuestion) {
     return {
-      answer:
-        "O reconhecimento específico é o ato que permite reconhecer um grau ou diploma de ensino superior estrangeiro idêntico a um grau académico ou diploma de ensino superior português, através de uma análise casuística do nível, duração e conteúdo programático, numa determinada área de formação, ramo de conhecimento ou especialidade.",
+      answer: getRecognitionTypeText("especifico", "definition", variantScope),
       citations: [],
     };
   }
 
   if (isWhereQuestion) {
     return {
-      answer:
-        "Para reconhecimento específico, o pedido é submetido através do formulário online da DGES: https://www.dges.gov.pt/recon/formulario.",
+      answer: getRecognitionTypeText("especifico", "where", variantScope),
       citations: [],
     };
   }
 
   if (isDocumentsQuestion) {
     return {
-      answer:
-        "Deve anexar ao formulário online: • Cópia do Diploma; • Histórico escolar; • Programa das disciplinas com a informação dos conteúdos curriculares estudados em cada disciplina; • Trabalho final: Monografia (Licenciatura), Dissertação (Mestrado) ou Tese (PhD) em PDF (se aplicável).",
+      answer: getRecognitionTypeText("especifico", "documents", variantScope),
       citations: [],
     };
   }
 
   if (isCostQuestion) {
     return {
-      answer:
-        `Reconhecimentos Específicos (com nota final atribuída pelo júri): • Licenciatura, Mestrado ou Doutoramento (obtido em países da UE): 268,00 €; • Licenciatura ou Doutoramento (obtido em países exteriores à UE): 650,00 €; • Mestrado (obtido em países exteriores à UE): 520,00 €; • Reconhecimento específico em Medicina: 1.500,00 €. Tabela de emolumentos: ${EMOLUMENTS_URL}.`,
+      answer: getRecognitionTypeText("especifico", "cost", variantScope),
       citations: [],
     };
   }
 
   if (isTimeQuestion) {
     return {
-      answer:
-        "O prazo é de 90 dias úteis após a instrução completa do processo e o respetivo pagamento.",
+      answer: getRecognitionTypeText("especifico", "time", variantScope),
       citations: [],
     };
   }
@@ -2367,6 +2432,7 @@ const inferredTopic = inferTopicFromQuestion(lower, previousTopicRaw);
 const inferredTopicNorm = stripDiacriticsLower(inferredTopic || "");
 const currentIntent = detectQuestionIntent(lower);
 const previousIntent = trackSession ? (sessionLastIntent.get(sessionId) || "") : "";
+const recognitionSubtypeShorthand = detectRecognitionSubtypeShorthand(qTrim);
 const hasQualifiedSessionTopic =
   previousTopicNorm.includes("reconhecimento") ||
   previousTopicNorm.includes("alojamento") ||
@@ -2426,12 +2492,7 @@ const canCarryIntentAcrossTopicSwitch =
 const isRecognitionSubtypeOnlyFollowUp =
   hasQualifiedSessionTopic &&
   previousTopicNorm.includes("reconhecimento") &&
-  (qTrim === "automatico" ||
-    qTrim === "automático" ||
-    qTrim === "nivel" ||
-    qTrim === "nível" ||
-    qTrim === "especifico" ||
-    qTrim === "específico");
+  Boolean(recognitionSubtypeShorthand);
 
 const recognitionSubtypeOnlyIntent = isRecognitionSubtypeOnlyFollowUp
   ? previousIntent || "definition"
@@ -2455,7 +2516,12 @@ if (isFollowUp && hasQualifiedSessionTopic) {
 
 let routedQuestion = enhancedQuestion;
 let effectiveIntent = currentIntent;
-const activeTopicForIntent = inferredTopic || (trackSession ? (sessionContext.get(sessionId) || "") : "");
+const activeSessionTopic = trackSession ? (sessionContext.get(sessionId) || "") : "";
+const inferredTopicIsGenericLocation = inferredTopicNorm.includes("localizacao");
+const activeTopicForIntent =
+  inferredTopic && !inferredTopicIsGenericLocation
+    ? inferredTopic
+    : activeSessionTopic;
 
 if (canCarryIntentAcrossTopicSwitch) {
   const carryQuestion = buildIntentCarryQuestion(previousIntent, inferredTopic);
@@ -2496,6 +2562,7 @@ const topicHint = trackSession ? (sessionContext.get(sessionId) || "") : "";
 const topicHintNorm = stripDiacriticsLower(topicHint);
 const routedLower = routedQuestion.toLowerCase();
 const lowerNorm = stripDiacriticsLower(routedLower);
+const responseVariantScope = trackSession ? `session:${sessionId}` : `question:${lowerNorm}`;
 const pendingState = trackSession ? (sessionPendingState.get(sessionId) || "") : "";
 const isRecognitionExplainPrompt =
   lowerNorm === "explica entao" ||
@@ -2515,7 +2582,7 @@ if (trackSession) {
   else if (!isEllipticContinuation) sessionLastIntent.delete(sessionId);
 }
 
-const cacheKey = buildResponseCacheKey(lowerNorm, topicHintNorm);
+const cacheKey = buildResponseCacheKey(lowerNorm, topicHintNorm, responseVariantScope);
 
 const sendJson = (statusCode, payload, { cacheable = true, pendingState: nextPendingState = null } = {}) => {
   if (trackSession) {
@@ -2639,24 +2706,21 @@ const asksGenericRecognitionExplanationFollowUp =
 
 if (asksRecognitionValuesOverview) {
   return sendJson(200, {
-    answer:
-      `Valores por tipo de reconhecimento:\n• Reconhecimento automático: 40€ sem conversão da classificação final, ou 60€ com conversão da classificação para a escala portuguesa.\n• Reconhecimento de nível: sem conversão, 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE) e 520,00 € (Mestrado fora da UE); com conversão, 298,00 € (UE), 680,00 € (Licenciatura fora da UE) e 550,00 € (Mestrado fora da UE).\n• Reconhecimento específico: 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE), 520,00 € (Mestrado fora da UE) e 1.500,00 € em Medicina.\n\nTabela de emolumentos: ${EMOLUMENTS_URL}.`,
+    answer: getRecognitionGeneralText("valuesOverview", responseVariantScope),
     citations: [],
   });
 }
 
 if (asksGeneralRecognitionOverview) {
   return sendJson(200, {
-    answer:
-      "O reconhecimento em Portugal de graus académicos e diplomas de ensino superior atribuídos por instituições de ensino superior estrangeiras é regulado, desde 1 de janeiro de 2019, pelo Decreto-Lei n.º 66/2018: https://dre.pt/application/conteudo/116068880. Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático: para graus/diplomas que constam do elenco oficialmente reconhecido.\n• Reconhecimento de nível: para reconhecer por comparabilidade o nível do grau ou diploma estrangeiro.\n• Reconhecimento específico: para reconhecer um grau ou diploma estrangeiro como idêntico a um grau ou diploma português numa área e especialidade determinadas.\n\nSe quiser, posso explicar qualquer um deles.",
+    answer: getRecognitionGeneralText("overview", responseVariantScope),
     citations: [],
   }, { pendingState: "generic_recognition_explain" });
 }
 
 if (asksGenericRecognitionExplanationFollowUp) {
   return sendJson(200, {
-    answer:
-      "Posso explicar qualquer um dos três tipos de reconhecimento:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nQual deles pretende que eu explique?",
+    answer: getRecognitionGeneralText("explainPrompt", responseVariantScope),
     citations: [],
   });
 }
@@ -2664,8 +2728,7 @@ if (asksGenericRecognitionExplanationFollowUp) {
 if (mentionsReconhecimento && !mentionsType && !topicHasType) {
   console.log("❓ CLARIFICAÇÃO: reconhecimento sem tipo especificado");
   return sendJson(200, {
-    answer:
-      "Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nA qual deles se refere?",
+    answer: getRecognitionGeneralText("clarifyTypePrompt", responseVariantScope),
     citations: [],
   });
 }
@@ -2676,25 +2739,24 @@ if (
   qNormRecon.includes("propinas")
 ) {
   return sendJson(200, {
-    answer:
-      `Pode consultar a tabela de emolumentos aqui: ${EMOLUMENTS_URL}. Se quiser, também posso indicar os valores do reconhecimento automático, de nível ou específico.`,
+    answer: getRecognitionGeneralText("emolumentsPrompt", responseVariantScope),
     citations: [],
   });
 }
 
-const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm);
+const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
 if (specificFallbackDeterministic) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento específico");
   return sendJson(200, specificFallbackDeterministic);
 }
 
-const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm);
+const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
 if (levelFallbackDeterministic) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento de nível");
   return sendJson(200, levelFallbackDeterministic);
 }
 
-const automaticFallback = automaticRecognitionFallbackIfNeeded(routedLower, topicHintNorm);
+const automaticFallback = automaticRecognitionFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
 if (automaticFallback) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento automático");
   return sendJson(200, automaticFallback);
@@ -2939,7 +3001,7 @@ if (isLocationQuestion) {
     
     // ───────── FALLBACK OBRIGATÓRIO PARA LOCALIZAÇÃO ─────────
 console.log("📍 VERIFICANDO: É pergunta de localização?");
-const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
 if (locationFallback) {
   console.log("✅ DETETADO: Usando fallback de localização obrigatório");
 
@@ -3023,7 +3085,7 @@ if (locationFallback) {
         console.error("🔥 Ollama falhou (tentativa 2/2):", String(err?.message ?? err));
 
         // Tentar fallback específico para reconhecimento de nível primeiro
-        const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
+        const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
         console.log(`🔍 nivelFallback result: ${nivelFallback ? 'FOUND' : 'NULL'}`);
         if (nivelFallback) {
           console.log(`📤 RETORNANDO: nivelFallback`);
@@ -3031,7 +3093,7 @@ if (locationFallback) {
         }
 
         // Tentar fallback específico para reconhecimento académico
-        const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
+        const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
         console.log(`🔍 academicFallback result: ${academicFallback ? 'FOUND' : 'NULL'}`);
         if (academicFallback) {
           console.log(`📤 RETORNANDO: academicFallback`);
@@ -3051,7 +3113,7 @@ if (locationFallback) {
         if (housingFallback) return sendJson(200, housingFallback);
 
         // Tentar fallback específico para localização
-        const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+        const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
         if (locationFallback) return sendJson(200, locationFallback);
 
         const exDef = extractiveDefinitionFallback(lower, selectedChunks);
@@ -3071,11 +3133,11 @@ if (locationFallback) {
       console.log("❌ LLM não devolveu JSON válido -> fallback");
 
       // Tentar fallback específico para reconhecimento de nível primeiro
-      const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
+      const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
       if (nivelFallback) return sendJson(200, nivelFallback);
 
       // Tentar fallback específico para reconhecimento académico
-      const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
+      const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
       if (academicFallback) return sendJson(200, academicFallback);
 
       // Tentar fallback específico para custos (genérico)
@@ -3087,7 +3149,7 @@ if (locationFallback) {
       if (housingFallback) return sendJson(200, housingFallback);
 
       // Tentar fallback específico para localização
-      const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+      const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
       if (locationFallback) return sendJson(200, locationFallback);
 
       const exDef = extractiveDefinitionFallback(lower, selectedChunks);
@@ -3115,7 +3177,7 @@ if (topicHintNorm.includes("reconhecimento") && topicHintNorm.includes("nivel"))
   if (mentionsAcad && !mentionsNivel) {
     console.log("❌ Tópico é 'reconhecimento de nível' mas resposta fala só de 'reconhecimento académico' -> fallback");
 
-    const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+    const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
     if (locationFallback) return sendJson(200, locationFallback);
 
     return sendJson(200, jsonFallback());
@@ -3127,7 +3189,7 @@ if (answerText.includes("Associação de Estudantes") || answerText.includes("As
   console.log("❌ Resposta contém 'Associação de Estudantes' - não é local correto para reconhecimento");
 
   // Tentar fallback de localização
-  const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+  const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
   if (locationFallback) return sendJson(200, locationFallback);
 
   // Se não encontrar, usar fallback genérico
@@ -3137,10 +3199,10 @@ if (answerText.includes("Associação de Estudantes") || answerText.includes("As
 if (answerText === FALLBACK) {
   console.log("ℹ️ LLM devolveu fallback explícito (JSON)");
 
-  const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
+  const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
   if (nivelFallback) return sendJson(200, nivelFallback);
 
-  const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
+  const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
   if (academicFallback) return sendJson(200, academicFallback);
 
   const costFallback = costFallbackIfNeeded(lower, scored);
@@ -3149,7 +3211,7 @@ if (answerText === FALLBACK) {
   const housingFallback = housingFallbackIfNeeded(lower, scored);
   if (housingFallback) return sendJson(200, housingFallback);
 
-  const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+  const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
   if (locationFallback) return sendJson(200, locationFallback);
 
   const exDef = extractiveDefinitionFallback(lower, selectedChunks);
@@ -3175,11 +3237,11 @@ if (answerText === FALLBACK) {
       console.log("❌ JSON sem citações estruturadas -> fallback");
 
       // Tentar fallback específico para reconhecimento de nível primeiro
-      const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
+      const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
       if (nivelFallback) return sendJson(200, nivelFallback);
 
       // Tentar fallback específico para reconhecimento académico
-      const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
+      const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
       if (academicFallback) return sendJson(200, academicFallback);
 
       // Tentar fallback específico para custos (genérico)
@@ -3191,7 +3253,7 @@ if (answerText === FALLBACK) {
       if (housingFallback) return sendJson(200, housingFallback);
 
       // Tentar fallback específico para localização
-      const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+      const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
       if (locationFallback) return sendJson(200, locationFallback);
 
       const exDef = extractiveDefinitionFallback(lower, selectedChunks);
@@ -3244,11 +3306,11 @@ if (validCitations.length === 0) {
   console.log("❌ Citações do JSON não batem no TEXTO do chunk indicado -> fallback");
 
   // Tentar fallback específico para reconhecimento de nível primeiro
-  const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
+  const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
   if (nivelFallback) return sendJson(200, nivelFallback);
 
   // Tentar fallback específico para reconhecimento académico
-  const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
+  const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
   if (academicFallback) return sendJson(200, academicFallback);
 
   // Tentar fallback específico para custos (genérico)
@@ -3260,7 +3322,7 @@ if (validCitations.length === 0) {
   if (housingFallback) return sendJson(200, housingFallback);
 
   // Tentar fallback específico para localização
-  const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+  const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
   if (locationFallback) return sendJson(200, locationFallback);
 
   const exDef = extractiveDefinitionFallback(lower, selectedChunks);
@@ -3305,11 +3367,11 @@ if (fundacaoRegime) {
     console.log("❌ Resposta com 2+ frases sem citações suficientes -> fallback");
 
     // Tentar fallback específico para reconhecimento de nível primeiro
-    const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored);
+    const nivelFallback = nivelRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
     if (nivelFallback) return sendJson(200, nivelFallback);
 
     // Tentar fallback específico para reconhecimento académico
-    const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored);
+    const academicFallback = academicRecognitionFallbackIfNeeded(lower, scored, responseVariantScope);
     if (academicFallback) return sendJson(200, academicFallback);
 
     // Tentar fallback específico para custos (genérico)
@@ -3321,7 +3383,7 @@ if (fundacaoRegime) {
     if (housingFallback) return sendJson(200, housingFallback);
 
     // Tentar fallback específico para localização
-    const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm);
+    const locationFallback = locationFallbackIfNeeded(lower, scored, topicHintNorm, responseVariantScope);
     if (locationFallback) return sendJson(200, locationFallback);
 
     const exDef = extractiveDefinitionFallback(lower, selectedChunks);

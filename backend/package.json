@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node index.js",
-    "index": "node indexdocs.js",
+    "index": "node indexdocs.mjs",
     "test:chat": "node test-multiple-questions.js"
   },
   "dependencies": {
