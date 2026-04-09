@@ -25,7 +25,7 @@ const MAX_CONTEXT_CHARS = 6500;
 
 const FALLBACK = "Não encontrei informação relevante nos documentos disponíveis.";
 const OUT_OF_DOMAIN_MESSAGE =
-  "Pergunta fora do âmbito académico da NOVA. Posso ajudar com reconhecimento, candidaturas, propinas, alojamento universitário e serviços académicos.";
+  "Não estou habilitado a responder a essa questão neste momento. Posso, no entanto, ajudar com outros temas, como reconhecimento académico, candidaturas, propinas, alojamento universitário e serviços académicos. Por exemplo: \"O que é o reconhecimento automático?\", \"Que documentos entregar para reconhecimento de nível?\" ou \"Quanto custa o reconhecimento específico?\".";
 const recognitionContentPath = path.resolve("./data/recognition-content.json");
 const equalityInclusionContentPath = path.resolve("./data/equality-inclusion-content.json");
 const RECOGNITION_CONTENT = loadRecognitionContent(recognitionContentPath);
@@ -101,6 +101,117 @@ function getRecognitionGeneralText(key, variantScope = "") {
   );
 }
 
+function getRecognitionTypeMetadata(typeKey = "") {
+  const normalized = stripDiacriticsLower(typeKey);
+
+  if (normalized.includes("automatico")) {
+    return { key: "automatico", label: "Reconhecimento automático", topic: "reconhecimento automático" };
+  }
+
+  if (normalized.includes("nivel")) {
+    return { key: "nivel", label: "Reconhecimento de nível", topic: "reconhecimento de nível" };
+  }
+
+  if (normalized.includes("especifico")) {
+    return { key: "especifico", label: "Reconhecimento específico", topic: "reconhecimento específico" };
+  }
+
+  return null;
+}
+
+function buildIntentCarryQuestion(intent, topic) {
+  if (!intent || !topic) return null;
+
+  const recognitionMeta = getRecognitionTypeMetadata(topic);
+  const topicForQuestion = recognitionMeta ? `o ${recognitionMeta.topic}` : topic;
+
+  switch (intent) {
+    case "definition":
+      return `O que é ${topicForQuestion}?`;
+    case "degrees":
+      return `A que graus estrangeiros se aplica ${topicForQuestion}?`;
+    case "where":
+      return `Onde solicitar ${topicForQuestion}?`;
+    case "documents":
+      return `Que documentos entregar para ${topicForQuestion}?`;
+    case "cost":
+      return `Quanto custa ${topicForQuestion}?`;
+    case "time":
+      return `Qual é o prazo para ${topicForQuestion}?`;
+    default:
+      return null;
+  }
+}
+
+function getRecognitionTypeActions(mode = "definition") {
+  const intent = mode === "cost" ? "cost" : "definition";
+  const items = ["automatico", "nivel", "especifico"]
+    .map((typeKey) => getRecognitionTypeMetadata(typeKey))
+    .filter(Boolean);
+
+  return items.map(({ label, topic }) => ({
+    label,
+    value: buildIntentCarryQuestion(intent, topic),
+  }));
+}
+
+function getRecognitionDetailActions(typeKey, currentIntent = "") {
+  const typeMeta = getRecognitionTypeMetadata(typeKey);
+  if (!typeMeta) return [];
+
+  const actionDefinitions = [
+    { intent: "definition", label: "O que é" },
+    { intent: "cost", label: "Valores" },
+    { intent: "documents", label: "Documentos" },
+    { intent: "where", label: "Onde solicitar" },
+    { intent: "time", label: "Prazo" },
+    { intent: "degrees", label: "A que graus se aplica" },
+  ];
+
+  return actionDefinitions
+    .filter(({ intent }) => intent !== currentIntent)
+    .filter(({ intent }) => intent === "definition" || Boolean(RECOGNITION_CONTENT?.types?.[typeMeta.key]?.[intent]))
+    .map(({ intent, label }) => ({
+      label,
+      value: buildIntentCarryQuestion(intent, typeMeta.topic),
+    }));
+}
+
+function maybeGetRecognitionDetailActions(typeKey, currentIntent = "", enabled = false) {
+  return enabled ? getRecognitionDetailActions(typeKey, currentIntent) : [];
+}
+
+function getRecognitionComplementaryHelpText(typeKey, currentIntent = "") {
+  const typeMeta = getRecognitionTypeMetadata(typeKey);
+  if (!typeMeta) return "";
+
+  const options = [];
+
+  if (currentIntent !== "cost") options.push("os custos deste tipo de reconhecimento");
+  if (currentIntent !== "time") options.push("a duração do processo");
+  if (currentIntent !== "documents") options.push("a documentação necessária");
+  if (currentIntent !== "where") options.push("onde o pode solicitar");
+  if (currentIntent !== "degrees" && RECOGNITION_CONTENT?.types?.[typeMeta.key]?.degrees) {
+    options.push("a que graus se aplica");
+  }
+
+  if (options.length === 0) return "";
+
+  const formattedOptions =
+    options.length === 1
+      ? options[0]
+      : `${options.slice(0, -1).join(", ")} e ${options[options.length - 1]}`;
+
+  return `\n\nSe quiser, também posso indicar ${formattedOptions}.`;
+}
+
+function withRecognitionComplementaryHelp(answer, typeKey, currentIntent = "") {
+  const baseAnswer = String(answer ?? "").trim();
+  if (!baseAnswer) return "";
+
+  return `${baseAnswer}${getRecognitionComplementaryHelpText(typeKey, currentIntent)}`;
+}
+
 function getRecognitionTypeText(typeKey, key, variantScope = "") {
   return interpolateTemplate(
     pickVariantText(RECOGNITION_CONTENT?.types?.[typeKey]?.[key] ?? "", variantScope, `type:${typeKey}:${key}`),
@@ -128,6 +239,23 @@ function getEqualityGeneralText(key, variantScope = "") {
     pickVariantText(EQUALITY_INCLUSION_CONTENT?.general?.[key] ?? "", variantScope, `equality:general:${key}`),
     getEqualityTemplateContext()
   );
+}
+
+function getEqualitySuggestedPrompts() {
+  const prompts = EQUALITY_INCLUSION_CONTENT?.general?.suggestedPrompts;
+  return Array.isArray(prompts)
+    ? prompts.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+    : [];
+}
+
+function getEqualityOverviewWithTopicsText(variantScope = "") {
+  const overview = getEqualityGeneralText("overview", variantScope).trim();
+  const clarifyPrompt = getEqualityGeneralText("clarifyPrompt", variantScope).trim();
+
+  if (!overview) return clarifyPrompt;
+  if (!clarifyPrompt) return overview;
+
+  return `${overview}\n\n${clarifyPrompt}`;
 }
 
 function getEqualityTopicText(topicKey, variantScope = "") {
@@ -207,6 +335,11 @@ const DOMAIN_KEYWORDS = [
   "conselho",
   "reitor",
   "reitoria",
+  "uaa",
+  "servicos academicos",
+  "serviços académicos",
+  "assuntos academicos",
+  "assuntos académicos",
   "colégio",
   "colegio",
   "diretor",
@@ -470,13 +603,7 @@ function inferTopicFromQuestion(lower, previousTopic = "") {
 function detectQuestionIntent(lower) {
   const q = stripDiacriticsLower(lower);
 
-  const isTimeQuestion =
-    q.includes("demora") ||
-    q.includes("tempo") ||
-    q.includes("prazo") ||
-    q.includes("dias") ||
-    q.includes("semanas") ||
-    q.includes("meses");
+  const isTimeQuestion = hasTimeIntentTerms(q);
 
   if (q.includes("o que e") || q.includes("definicao") || q.includes("define") || q.includes("significa")) {
     return "definition";
@@ -501,7 +628,7 @@ function detectQuestionIntent(lower) {
     return "documents";
   }
 
-  if (!isTimeQuestion && (q.includes("custa") || q.includes("custo") || q.includes("quanto") || q.includes("valor"))) {
+  if (!isTimeQuestion && hasCostIntentTerms(q)) {
     return "cost";
   }
 
@@ -512,25 +639,35 @@ function detectQuestionIntent(lower) {
   return null;
 }
 
-function buildIntentCarryQuestion(intent, topic) {
-  if (!intent || !topic) return null;
+function hasTimeIntentTerms(text) {
+  const q = stripDiacriticsLower(text);
 
-  switch (intent) {
-    case "definition":
-      return `o que e ${topic}`;
-    case "degrees":
-      return `a que graus estrangeiros se aplica ${topic}`;
-    case "where":
-      return `onde solicitar ${topic}`;
-    case "documents":
-      return `que documentos entregar para ${topic}`;
-    case "cost":
-      return `quanto custa ${topic}`;
-    case "time":
-      return `quanto tempo demora ${topic}`;
-    default:
-      return null;
-  }
+  return (
+    q.includes("demora") ||
+    q.includes("tempo") ||
+    q.includes("prazo") ||
+    q.includes("duracao") ||
+    q.includes("duração") ||
+    q.includes("dias") ||
+    q.includes("semanas") ||
+    q.includes("meses")
+  );
+}
+
+function hasCostIntentTerms(text) {
+  const q = stripDiacriticsLower(text);
+
+  return (
+    q.includes("custa") ||
+    q.includes("custo") ||
+    q.includes("quanto") ||
+    q.includes("valor") ||
+    q.includes("preco") ||
+    q.includes("taxa") ||
+    q.includes("taxas") ||
+    q.includes("emolumento") ||
+    q.includes("emolumentos")
+  );
 }
 
 function detectEqualityTopicKey(lower, topicHint = "") {
@@ -547,6 +684,8 @@ function detectEqualityTopicKey(lower, topicHint = "") {
     q.includes("contacto") ||
     q.includes("contactos") ||
     q.includes("email") ||
+    q.includes("responsavel") ||
+    q.includes("responsaveis") ||
     mentionsEqualityOffice
   ) {
     return "contacts";
@@ -572,7 +711,13 @@ function detectEqualityTopicKey(lower, topicHint = "") {
   if (q.includes("linguagem inclusiva") || (q.includes("guia") && q.includes("inclusiva"))) return "linguagemInclusiva";
   if (q.includes("assedio") || q.includes("discriminacao") || q.includes("codigo de conduta")) return "assedioDiscriminacao";
   if (q.includes("necessidades educativas especiais")) return "necessidadesEducativasEspeciais";
-  if (q.includes("refugiados") || q.includes("ucrania") || q.includes("afegas") || q.includes("propinas") && (q.includes("ucrania") || q.includes("afegas"))) return "refugiados";
+  if (
+    q.includes("refugiados") ||
+    q.includes("ucrania") ||
+    q.includes("afegas") ||
+    q.includes("isencao") ||
+    (q.includes("propinas") && (q.includes("ucrania") || q.includes("afegas") || hasEqualityContext))
+  ) return "refugiados";
   if (q.includes("recursos") || q.includes("projetos")) return "recursosProjetos";
   if (q.includes("factos") || q.includes("numeros")) return "factosNumeros";
   if (q.includes("relatorios") || q.includes("documentos")) return "relatoriosDocumentos";
@@ -580,6 +725,7 @@ function detectEqualityTopicKey(lower, topicHint = "") {
 
   if (hasEqualityContext) {
     if (q === "contactos" || q === "contacto" || q === "email") return "contacts";
+    if (q.includes("responsavel") || q.includes("responsaveis")) return "contacts";
     if (q.includes("gabinete")) return "contacts";
     if (q.includes("politica")) return "politica";
     if (q.includes("plano")) return "plano";
@@ -587,7 +733,7 @@ function detectEqualityTopicKey(lower, topicHint = "") {
     if (q.includes("guia") || q.includes("linguagem")) return "linguagemInclusiva";
     if (q.includes("codigo de conduta")) return "assedioDiscriminacao";
     if (q.includes("necessidades especiais")) return "necessidadesEducativasEspeciais";
-    if (q.includes("refugiados") || q.includes("ucrania") || q.includes("afegas")) return "refugiados";
+    if (q.includes("refugiados") || q.includes("ucrania") || q.includes("afegas") || q.includes("propinas") || q.includes("isencao")) return "refugiados";
     if (q.includes("recursos") || q.includes("projetos")) return "recursosProjetos";
     if (q.includes("factos") || q.includes("numeros")) return "factosNumeros";
     if (q.includes("relatorios") || q.includes("documentos")) return "relatoriosDocumentos";
@@ -617,13 +763,65 @@ function equalityFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
   if (!mentionsEqualityTheme) return null;
 
   const equalityTopicKey = detectEqualityTopicKey(lower, topicHint);
+  const asksResponsibleContact = q.includes("responsavel") || q.includes("responsaveis");
+  const asksOfficeExistence =
+    q.includes("existe um gabinete") ||
+    q.includes("ha um gabinete") ||
+    q.includes("há um gabinete") ||
+    q.includes("existe gabinete") ||
+    q.includes("ha gabinete") ||
+    q.includes("há gabinete");
+  const asksOfficeLocation =
+    q.includes("onde fica") ||
+    q.includes("onde e") ||
+    q.includes("onde é") ||
+    q.includes("morada") ||
+    q.includes("endereco") ||
+    q.includes("endereço") ||
+    q.includes("localizacao") ||
+    q.includes("localização") ||
+    q.includes("em que local") ||
+    q.includes("fica o gabinete") ||
+    q.includes("fica esse gabinete");
+  const asksOfficeAttendance =
+    q.includes("atendimento") ||
+    q.includes("atende") ||
+    q.includes("funcionamento") ||
+    q.includes("aberto") ||
+    q.includes("presencial");
+  const wantsTopicList =
+    q.includes("topicos") ||
+    q.includes("topicos igualdade") ||
+    q.includes("temas") ||
+    q.includes("assuntos") ||
+    q.includes("sobre que") ||
+    q.includes("sobre o que") ||
+    q.includes("que temas") ||
+    q.includes("quais os temas");
+  const isEqualityIntroPrompt =
+    q === "igualdade" ||
+    q === "inclusao" ||
+    q === "igualdade na nova" ||
+    q === "inclusao na nova" ||
+    q === "igualdade e inclusao" ||
+    q === "igualdade e inclusao na nova" ||
+    q === "igualdade e inclusão na nova" ||
+    q.includes("igualdade na nova") ||
+    q.includes("inclusao na nova") ||
+    q.includes("inclusão na nova") ||
+    q.includes("existe igualdade na nova") ||
+    q.includes("ha igualdade na nova") ||
+    q.includes("há igualdade na nova") ||
+    q.includes("igualdade na nova?") ||
+    q.includes("inclusao na nova?") ||
+    q.includes("inclusão na nova?");
   const asksDefinition =
     q.includes("o que e") ||
     q.includes("explica") ||
-    q === "igualdade" ||
-    q === "inclusao" ||
-    q === "igualdade e inclusao" ||
-    q === "igualdade e inclusão";
+    q === "o que e igualdade" ||
+    q === "o que e inclusao" ||
+    q === "o que e igualdade e inclusao" ||
+    q === "o que e igualdade e inclusão";
   const isBroadEqualityPrompt =
     asksDefinition ||
     q.includes("igualdade e inclusao") ||
@@ -636,8 +834,18 @@ function equalityFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
 
   if (equalityTopicKey === "contacts") {
     console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (contactos)");
+    const contactResponseKey = asksOfficeExistence
+      ? "officeExistsAnswer"
+      : asksResponsibleContact
+        ? "responsibleAnswer"
+        : asksOfficeLocation
+          ? "locationAnswer"
+          : asksOfficeAttendance
+            ? "attendanceAnswer"
+            : "contactAnswer";
+
     return {
-      answer: getEqualityContactText("gabinete", "contactAnswer", {}, variantScope),
+      answer: getEqualityContactText("gabinete", contactResponseKey, {}, variantScope),
       citations: [],
     };
   }
@@ -645,7 +853,12 @@ function equalityFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
   if (equalityTopicKey === "hours") {
     console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (horário)");
     return {
-      answer: getEqualityContactText("gabinete", "hoursAnswer", {}, variantScope),
+      answer: getEqualityContactText(
+        "gabinete",
+        asksOfficeAttendance ? "attendanceAnswer" : "hoursAnswer",
+        {},
+        variantScope
+      ),
       citations: [],
     };
   }
@@ -658,11 +871,21 @@ function equalityFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
     };
   }
 
-  if (isBroadEqualityPrompt) {
-    console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (overview)");
+  if (wantsTopicList) {
+    console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (clarify)");
     return {
-      answer: getEqualityGeneralText("overview", variantScope),
+      answer: getEqualityGeneralText("clarifyPrompt", variantScope),
       citations: [],
+      actions: getEqualitySuggestedPrompts(),
+    };
+  }
+
+  if (isEqualityIntroPrompt || isBroadEqualityPrompt) {
+    console.log("✅ DETETADO: Usando fallback determinístico de igualdade e inclusão (overview_with_topics)");
+    return {
+      answer: getEqualityOverviewWithTopicsText(variantScope),
+      citations: [],
+      actions: getEqualitySuggestedPrompts(),
     };
   }
 
@@ -671,6 +894,7 @@ function equalityFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
     return {
       answer: getEqualityGeneralText("clarifyPrompt", variantScope),
       citations: [],
+      actions: getEqualitySuggestedPrompts(),
     };
   }
 
@@ -1659,27 +1883,14 @@ function extractiveDefinitionFallback(lower, selectedChunks) {
 
 // ───────── fallback específico para custos/taxas ─────────
 function costFallbackIfNeeded(lower, scored) {
-  const isTimeQuestion =
-    lower.includes("demora") ||
-    lower.includes("tempo") ||
-    lower.includes("prazo") ||
-    lower.includes("dias") ||
-    lower.includes("semanas") ||
-    lower.includes("meses");
+  const isTimeQuestion = hasTimeIntentTerms(lower);
 
   // Evita confundir "quanto tempo" com custo.
   if (isTimeQuestion) {
     return timeFallbackIfNeeded(lower, scored);
   }
 
-  const hasCostTerms = 
-    lower.includes("custa") || 
-    lower.includes("custo") || 
-    lower.includes("preço") || 
-    lower.includes("preco") || 
-    lower.includes("taxa") || 
-    lower.includes("valor") || 
-    lower.includes("quanto");
+  const hasCostTerms = hasCostIntentTerms(lower);
     
   if (!hasCostTerms) return null;
   
@@ -1773,13 +1984,7 @@ function costFallbackIfNeeded(lower, scored) {
 
 // ───────── fallback específico para tempo/prazos ─────────
 function timeFallbackIfNeeded(lower, scored) {
-  const isTimeQuestion =
-    lower.includes("demora") ||
-    lower.includes("tempo") ||
-    lower.includes("prazo") ||
-    lower.includes("dias") ||
-    lower.includes("semanas") ||
-    lower.includes("meses");
+  const isTimeQuestion = hasTimeIntentTerms(lower);
   
   if (!isTimeQuestion) return null;
   
@@ -1797,6 +2002,7 @@ function timeFallbackIfNeeded(lower, scored) {
       const hasDurationPattern =
         /\b\d+\s*(dias|semanas|meses)\b/.test(sn) ||
         sn.includes("prazo") ||
+        sn.includes("duracao") ||
         sn.includes("apos a instrucao completa") ||
         sn.includes("após a instrução completa") ||
         sn.includes("instrucao completa do processo") ||
@@ -1922,6 +2128,14 @@ function housingLocationFallbackIfNeeded(lower, topicHint = "") {
     qNorm.includes("aberto") ||
     qNorm.includes("atendimento");
 
+  const asksOfficeExistence =
+    qNorm.includes("existe um gabinete") ||
+    qNorm.includes("ha um gabinete") ||
+    qNorm.includes("há um gabinete") ||
+    qNorm.includes("existe gabinete") ||
+    qNorm.includes("ha gabinete") ||
+    qNorm.includes("há gabinete");
+
   const asksPhoneOrContact =
     qNorm.includes("telefone") ||
     qNorm.includes("telemovel") ||
@@ -1952,14 +2166,30 @@ function housingLocationFallbackIfNeeded(lower, topicHint = "") {
     return null;
   }
 
-  if (!isHousingOfficeQuery || (!asksOfficeHours && !asksPhoneOrContact && !asksAddressOrLocation)) {
+  if (!isHousingOfficeQuery || (!asksOfficeExistence && !asksOfficeHours && !asksPhoneOrContact && !asksAddressOrLocation)) {
     return null;
+  }
+
+  if (asksOfficeExistence) {
+    return {
+      answer:
+        "Sim. O alojamento universitário na NOVA é acompanhado pelos SASNOVA, através do Gabinete de Alojamento. Se quiser, posso indicar os contactos, a página de alojamento ou a forma de candidatura.",
+      citations: [],
+    };
   }
 
   if (asksOfficeHours) {
     return {
       answer:
-        "Nos documentos carregados não encontrei um horário específico do Gabinete de Alojamento. Os contactos indicados são o telefone +351 213 715 600, o e-mail alojamento@unl.pt e a página dos SASNOVA: https://sas.unl.pt/alojamento/.",
+        "Não encontrei um horário específico do Gabinete de Alojamento nos documentos carregados. Os contactos disponíveis são o telefone +351 213 715 600, o e-mail alojamento@unl.pt e a página https://sas.unl.pt/alojamento/.",
+      citations: [],
+    };
+  }
+
+  if (asksAddressOrLocation && !asksPhoneOrContact) {
+    return {
+      answer:
+        "Não tenho uma morada física específica do Gabinete de Alojamento nos documentos carregados. Os contactos disponíveis são o telefone +351 213 715 600, o e-mail alojamento@unl.pt e a página https://sas.unl.pt/alojamento/.",
       citations: [],
     };
   }
@@ -2174,6 +2404,11 @@ RESPONDA EM JSON (sem markdown, sem prefixo):
 
     const data = await resp.json();
     return String(data.response ?? "").trim();
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error(`Ollama timeout after ${timeoutMs}ms`);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -2194,6 +2429,25 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "", variantScope = 
     qNorm.includes("funcionamento") ||
     qNorm.includes("aberto") ||
     qNorm.includes("atendimento");
+
+  const asksOfficeExistence =
+    qNorm.includes("existe a uaa") ||
+    qNorm.includes("ha uaa") ||
+    qNorm.includes("há uaa") ||
+    qNorm.includes("existe um gabinete") ||
+    qNorm.includes("ha um gabinete") ||
+    qNorm.includes("há um gabinete") ||
+    qNorm.includes("existe servico academico") ||
+    qNorm.includes("existe servicos academicos") ||
+    qNorm.includes("ha servicos academicos") ||
+    qNorm.includes("há serviços académicos");
+
+  const asksOfficeAttendance =
+    qNorm.includes("atendimento") ||
+    qNorm.includes("atende") ||
+    qNorm.includes("funcionamento") ||
+    qNorm.includes("aberto") ||
+    qNorm.includes("presencial");
 
   const asksPhoneOrContact =
     qNorm.includes("telefone") ||
@@ -2240,13 +2494,21 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "", variantScope = 
     return housingLocationFallback;
   }
 
-  if (isRecognitionOfficeQuery && (asksOfficeHours || asksPhoneOrContact || asksAddressOrLocation)) {
+  if (isRecognitionOfficeQuery && (asksOfficeExistence || asksOfficeHours || asksPhoneOrContact || asksAddressOrLocation)) {
     console.log("✅ É pedido determinístico de contacto/localização/horário da UAA/Reitoria");
+
+    if (asksOfficeExistence) {
+      return {
+        answer:
+          `${ambiguityNote}${getRecognitionContactText("uaa", "officeExistsAnswer", {}, variantScope)}`,
+        citations: [],
+      };
+    }
 
     if (asksOfficeHours) {
       return {
         answer:
-            `${ambiguityNote}${getRecognitionContactText("uaa", "hoursAnswer", {}, variantScope)}`,
+            `${ambiguityNote}${getRecognitionContactText("uaa", asksOfficeAttendance ? "attendanceAnswer" : "hoursAnswer", {}, variantScope)}`,
         citations: [],
       };
     }
@@ -2356,7 +2618,7 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "", variantScope = 
 }
 
 // ───────── fallback determinístico para reconhecimento automático ─────────
-function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
+function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScope = "", includeDetailActions = false) {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
 
@@ -2392,21 +2654,19 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     q.includes("anexar") ||
     q.includes("diploma");
 
-  const isCostQuestion =
-    q.includes("custa") ||
-    q.includes("custo") ||
-    q.includes("quanto");
+  const isCostQuestion = hasCostIntentTerms(q);
 
-  const isTimeQuestion =
-    q.includes("demora") ||
-    q.includes("tempo") ||
-    q.includes("prazo") ||
-    q.includes("dias");
+  const isTimeQuestion = hasTimeIntentTerms(q);
 
   if (isDefinitionQuestion) {
     return {
-      answer: getRecognitionTypeText("automatico", "definition", variantScope),
+      answer: withRecognitionComplementaryHelp(
+        getRecognitionTypeText("automatico", "definition", variantScope),
+        "automatico",
+        "definition"
+      ),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("automatico", "definition", includeDetailActions),
     };
   }
 
@@ -2414,6 +2674,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     return {
       answer: getRecognitionTypeText("automatico", "degrees", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("automatico", "degrees", includeDetailActions),
     };
   }
 
@@ -2421,6 +2682,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     return {
       answer: getRecognitionTypeText("automatico", "where", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("automatico", "where", includeDetailActions),
     };
   }
 
@@ -2428,6 +2690,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     return {
       answer: getRecognitionTypeText("automatico", "documents", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("automatico", "documents", includeDetailActions),
     };
   }
 
@@ -2435,6 +2698,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     return {
       answer: getRecognitionTypeText("automatico", "time", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("automatico", "time", includeDetailActions),
     };
   }
 
@@ -2442,6 +2706,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     return {
       answer: getRecognitionTypeText("automatico", "cost", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("automatico", "cost", includeDetailActions),
     };
   }
 
@@ -2449,7 +2714,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
 }
 
 // ───────── fallback determinístico para reconhecimento de nível ─────────
-function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
+function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "", includeDetailActions = false) {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
 
@@ -2475,26 +2740,31 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
     q.includes("onde solicitar") ||
     q.includes("formulario");
 
+  const isDegreesQuestion =
+    q.includes("graus") ||
+    q.includes("aplica") ||
+    q.includes("a que graus") ||
+    q.includes("quais graus");
+
   const isDocumentsQuestion =
     q.includes("document") ||
     q.includes("entregar") ||
     q.includes("anexar") ||
     q.includes("diploma");
 
-  const isTimeQuestion =
-    q.includes("demora") ||
-    q.includes("tempo") ||
-    q.includes("prazo") ||
-    q.includes("dias");
+  const isTimeQuestion = hasTimeIntentTerms(q);
 
-  const isCostQuestion =
-    !isTimeQuestion &&
-    (q.includes("custa") || q.includes("custo") || q.includes("quanto") || q.includes("valor"));
+  const isCostQuestion = !isTimeQuestion && hasCostIntentTerms(q);
 
   if (isDefinitionQuestion) {
     return {
-      answer: getRecognitionTypeText("nivel", "definition", variantScope),
+      answer: withRecognitionComplementaryHelp(
+        getRecognitionTypeText("nivel", "definition", variantScope),
+        "nivel",
+        "definition"
+      ),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("nivel", "definition", includeDetailActions),
     };
   }
 
@@ -2502,6 +2772,15 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
     return {
       answer: getRecognitionTypeText("nivel", "where", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("nivel", "where", includeDetailActions),
+    };
+  }
+
+  if (isDegreesQuestion) {
+    return {
+      answer: getRecognitionTypeText("nivel", "degrees", variantScope),
+      citations: [],
+      actions: maybeGetRecognitionDetailActions("nivel", "degrees", includeDetailActions),
     };
   }
 
@@ -2509,6 +2788,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
     return {
       answer: getRecognitionTypeText("nivel", "documents", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("nivel", "documents", includeDetailActions),
     };
   }
 
@@ -2516,6 +2796,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
     return {
       answer: getRecognitionTypeText("nivel", "cost", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("nivel", "cost", includeDetailActions),
     };
   }
 
@@ -2523,6 +2804,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
     return {
       answer: getRecognitionTypeText("nivel", "time", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("nivel", "time", includeDetailActions),
     };
   }
 
@@ -2530,7 +2812,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
 }
 
 // ───────── fallback determinístico para reconhecimento específico ─────────
-function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "") {
+function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "", includeDetailActions = false) {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
 
@@ -2554,6 +2836,12 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
     q.includes("onde solicitar") ||
     q.includes("formulario");
 
+  const isDegreesQuestion =
+    q.includes("graus") ||
+    q.includes("aplica") ||
+    q.includes("a que graus") ||
+    q.includes("quais graus");
+
   const isDocumentsQuestion =
     q.includes("document") ||
     q.includes("entregar") ||
@@ -2562,20 +2850,19 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
     q.includes("historico") ||
     q.includes("programa");
 
-  const isTimeQuestion =
-    q.includes("demora") ||
-    q.includes("tempo") ||
-    q.includes("prazo") ||
-    q.includes("dias");
+  const isTimeQuestion = hasTimeIntentTerms(q);
 
-  const isCostQuestion =
-    !isTimeQuestion &&
-    (q.includes("custa") || q.includes("custo") || q.includes("quanto") || q.includes("valor"));
+  const isCostQuestion = !isTimeQuestion && hasCostIntentTerms(q);
 
   if (isDefinitionQuestion) {
     return {
-      answer: getRecognitionTypeText("especifico", "definition", variantScope),
+      answer: withRecognitionComplementaryHelp(
+        getRecognitionTypeText("especifico", "definition", variantScope),
+        "especifico",
+        "definition"
+      ),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("especifico", "definition", includeDetailActions),
     };
   }
 
@@ -2583,6 +2870,15 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
     return {
       answer: getRecognitionTypeText("especifico", "where", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("especifico", "where", includeDetailActions),
+    };
+  }
+
+  if (isDegreesQuestion) {
+    return {
+      answer: getRecognitionTypeText("especifico", "degrees", variantScope),
+      citations: [],
+      actions: maybeGetRecognitionDetailActions("especifico", "degrees", includeDetailActions),
     };
   }
 
@@ -2590,6 +2886,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
     return {
       answer: getRecognitionTypeText("especifico", "documents", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("especifico", "documents", includeDetailActions),
     };
   }
 
@@ -2597,6 +2894,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
     return {
       answer: getRecognitionTypeText("especifico", "cost", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("especifico", "cost", includeDetailActions),
     };
   }
 
@@ -2604,6 +2902,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
     return {
       answer: getRecognitionTypeText("especifico", "time", variantScope),
       citations: [],
+      actions: maybeGetRecognitionDetailActions("especifico", "time", includeDetailActions),
     };
   }
 
@@ -2668,7 +2967,7 @@ const FOLLOWUP_PATTERNS = [
   /^(isso|isto)\b/i,             // "isso..." "isto..."
 
   // follow-up sobre tempo
-  /\b(demora|tempo|prazo|dias|semanas|meses)\b/i,
+  /\b(demora|tempo|prazo|duracao|duração|dias|semanas|meses)\b/i,
 ];
 
 const qTrim = lower.trim();
@@ -2678,6 +2977,7 @@ const inferredTopic = inferTopicFromQuestion(lower, previousTopicRaw);
 const inferredTopicNorm = stripDiacriticsLower(inferredTopic || "");
 const currentIntent = detectQuestionIntent(lower);
 const previousIntent = trackSession ? (sessionLastIntent.get(sessionId) || "") : "";
+const currentPendingState = trackSession ? (sessionPendingState.get(sessionId) || "") : "";
 const recognitionSubtypeShorthand = detectRecognitionSubtypeShorthand(qTrim);
 const hasQualifiedSessionTopic =
   previousTopicNorm.includes("reconhecimento") ||
@@ -2695,7 +2995,7 @@ const hasQualifiedSessionTopic =
 // - bate num padrão típico
 // - OU é uma pergunta curta e já existe contexto na sessão
 // - MAS NUNCA se tem termos específicos de custos ou documentos (perguntas autónomas)
-const hasCostTerms = qTrim.includes("custa") || qTrim.includes("custo") || qTrim.includes("quanto");
+const hasCostTerms = hasCostIntentTerms(qTrim);
 const hasDocTerms = qTrim.includes("documento") || qTrim.includes("entregar");
 const hasLocationTerms =
   qTrim.includes("onde") ||
@@ -2737,19 +3037,52 @@ const canCarryIntentAcrossTopicSwitch =
   previousTopicNorm.includes("reconhecimento") &&
   inferredTopicNorm.includes("reconhecimento");
 
+const previousRecognitionTopicHasType =
+  previousTopicNorm.includes("automatico") ||
+  previousTopicNorm.includes("nivel") ||
+  previousTopicNorm.includes("especifico");
+
+const inferredRecognitionTopicHasType =
+  inferredTopicNorm.includes("automatico") ||
+  inferredTopicNorm.includes("nivel") ||
+  inferredTopicNorm.includes("especifico");
+
+const canCarryRecognitionIntentAcrossSubtypeSwitch =
+  trackSession &&
+  isExplicitTopicSwitch &&
+  !currentIntent &&
+  Boolean(previousIntent) &&
+  previousTopicNorm.includes("reconhecimento") &&
+  inferredTopicNorm.includes("reconhecimento") &&
+  previousRecognitionTopicHasType &&
+  inferredRecognitionTopicHasType;
+
+const canCarryRecognitionValuesIntentToSubtype =
+  trackSession &&
+  currentPendingState === "generic_recognition_values" &&
+  !currentIntent &&
+  inferredTopicNorm.includes("reconhecimento") &&
+  inferredTopicNorm !== previousTopicNorm;
+
 const isRecognitionSubtypeOnlyFollowUp =
   hasQualifiedSessionTopic &&
   previousTopicNorm.includes("reconhecimento") &&
   Boolean(recognitionSubtypeShorthand);
 
 const recognitionSubtypeOnlyIntent = isRecognitionSubtypeOnlyFollowUp
-  ? previousIntent || "definition"
+  ? currentPendingState === "generic_recognition_values"
+    ? "cost"
+    : previousIntent || "definition"
   : null;
+
+const hasShortContextualFollowUpSignal =
+  Boolean(currentIntent) ||
+  Boolean(recognitionSubtypeShorthand);
 
 const isFollowUp =
   !isExplicitTopicSwitch &&
   (FOLLOWUP_PATTERNS.some((re) => re.test(qTrim)) ||
-   (hasQualifiedSessionTopic && qTrim.length <= 48)) &&
+   (hasQualifiedSessionTopic && qTrim.length <= 48 && hasShortContextualFollowUpSignal)) &&
   !hasDocTerms &&
   !hasLocationTerms &&
   !(hasCostTerms && !(hasQualifiedSessionTopic && isGenericCostQuestion));
@@ -2778,6 +3111,16 @@ if (canCarryIntentAcrossTopicSwitch) {
     effectiveIntent = previousIntent;
     console.log(`🔁 A herdar intenção anterior (${previousIntent}) para novo tópico: ${inferredTopic}`);
   }
+} else if (canCarryRecognitionIntentAcrossSubtypeSwitch) {
+  const normalizedQuestion = buildIntentCarryQuestion(previousIntent, inferredTopic) || inferredTopic;
+  routedQuestion = normalizedQuestion;
+  effectiveIntent = previousIntent;
+  console.log(`🔁 A manter intenção ${previousIntent} ao trocar de subtipo de reconhecimento: ${normalizedQuestion}`);
+} else if (canCarryRecognitionValuesIntentToSubtype) {
+  const normalizedQuestion = buildIntentCarryQuestion("cost", inferredTopic) || inferredTopic;
+  routedQuestion = normalizedQuestion;
+  effectiveIntent = "cost";
+  console.log(`💰 A herdar intenção de valores para subtipo de reconhecimento: ${normalizedQuestion}`);
 } else if (trackSession && isEllipticContinuation && currentIntent && activeTopicForIntent) {
   const normalizedQuestion = buildIntentCarryQuestion(currentIntent, activeTopicForIntent);
   if (normalizedQuestion) {
@@ -2812,6 +3155,8 @@ const routedLower = routedQuestion.toLowerCase();
 const lowerNorm = stripDiacriticsLower(routedLower);
 const responseVariantScope = trackSession ? `session:${sessionId}` : `question:${lowerNorm}`;
 const pendingState = trackSession ? (sessionPendingState.get(sessionId) || "") : "";
+const shouldShowRecognitionDetailActions = false;
+const normalizedPrompt = lowerNorm.replace(/[?!.]+$/g, "").trim();
 const isRecognitionExplainPrompt =
   lowerNorm === "explica entao" ||
   lowerNorm === "explica então" ||
@@ -2853,6 +3198,7 @@ const inFlightPromise = new Promise((resolve, reject) => {
   resolveInFlightResponse = resolve;
   rejectInFlightResponse = reject;
 });
+inFlightPromise.catch(() => null);
 inFlightResponses.set(cacheKey, { promise: inFlightPromise });
 
 const finishInFlight = (result) => {
@@ -2895,11 +3241,7 @@ if (cachedResponse) {
 }
 
 // mantém isto (usas mais abaixo para boosts)
-const isTimeQuestion =
-  lower.includes("demora") ||
-  lower.includes("tempo") ||
-  lower.includes("prazo") ||
-  lower.includes("dias");
+const isTimeQuestion = hasTimeIntentTerms(lower);
 
 const isHousingIntent =
   lowerNorm.includes("alojamento") ||
@@ -2923,7 +3265,16 @@ const hasHardOutOfDomainSignal = outOfDomainPatterns.some((re) => re.test(lowerN
 
 const isDomain =
   isRecognitionSubtypeOnlyFollowUp ||
+  isFollowUp ||
   isHousingIntent ||
+  normalizedPrompt === "quais sao os valores" ||
+  normalizedPrompt === "valores" ||
+  normalizedPrompt === "quais sao os precos" ||
+  normalizedPrompt === "precos" ||
+  normalizedPrompt === "emolumentos" ||
+  normalizedPrompt === "quanto custa" ||
+  ((lowerNorm.includes("classific") || lowerNorm.includes("classificacao") || lowerNorm.includes("classificação")) &&
+    (lowerNorm.includes("convers") || lowerNorm.includes("atribu"))) ||
   topicHintNorm.includes("igualdade") ||
   topicHintNorm.includes("inclusao") ||
   DOMAIN_KEYWORDS.some((k) => lower.includes(k)) ||
@@ -2981,11 +3332,43 @@ const mentionsType =
   qNormRecon.includes("nivel") ||
   qNormRecon.includes("especifico");
 
+const topicHasType =
+  topicHintNorm.includes("automatico") ||
+  topicHintNorm.includes("nivel") ||
+  topicHintNorm.includes("especifico");
+
 const asksRecognitionValuesOverview =
   mentionsReconhecimento &&
   !mentionsType &&
-  (qNormRecon.includes("valor") || qNormRecon.includes("valores") || qNormRecon.includes("custa") || qNormRecon.includes("custo") || qNormRecon.includes("quanto")) &&
+  (qNormRecon.includes("valores") || hasCostIntentTerms(qNormRecon)) &&
   (qNormRecon.includes("tipos") || qNormRecon.includes("respetivos") || qNormRecon.includes("respectivos") || qNormRecon.includes("diferentes"));
+
+const asksRecognitionValuesClarify =
+  !mentionsType &&
+  !asksRecognitionValuesOverview &&
+  (
+    normalizedPrompt === "quais sao os valores" ||
+    normalizedPrompt === "valores" ||
+    normalizedPrompt === "quais sao os precos" ||
+    normalizedPrompt === "precos" ||
+    normalizedPrompt === "quanto custa" ||
+    ((mentionsReconhecimento || topicHintNorm.includes("reconhecimento")) && hasCostIntentTerms(qNormRecon))
+  );
+
+const asksSeparateConversionFee =
+  ((mentionsReconhecimento || topicHasType || topicHintNorm.includes("reconhecimento")) ||
+    (qNormRecon.includes("convers") && qNormRecon.includes("classific"))) &&
+  qNormRecon.includes("convers") &&
+  qNormRecon.includes("classific") &&
+  !qNormRecon.includes("automatico") &&
+  !qNormRecon.includes("nivel") &&
+  !qNormRecon.includes("especifico");
+
+const asksLegacyAttributionFee =
+  ((mentionsReconhecimento || topicHasType || topicHintNorm.includes("reconhecimento")) ||
+    (qNormRecon.includes("atribu") && qNormRecon.includes("classific"))) &&
+  qNormRecon.includes("atribu") &&
+  qNormRecon.includes("classific");
 
 const asksGeneralRecognitionOverview =
   mentionsReconhecimento &&
@@ -2995,11 +3378,6 @@ const asksGeneralRecognitionOverview =
     qNormRecon.includes("como funciona o reconhecimento") ||
     qNormRecon.includes("como funciona o reconhecimento de graus") ||
     qNormRecon.includes("o que e o reconhecimento em portugal"));
-
-const topicHasType =
-  topicHintNorm.includes("automatico") ||
-  topicHintNorm.includes("nivel") ||
-  topicHintNorm.includes("especifico");
 
 const asksGenericRecognitionExplanationFollowUp =
   pendingState === "generic_recognition_explain" &&
@@ -3013,6 +3391,28 @@ if (asksRecognitionValuesOverview) {
   }, { debugLabel: "deterministic:recognition:values_overview" });
 }
 
+if (asksRecognitionValuesClarify) {
+  return sendJson(200, {
+    answer: getRecognitionGeneralText("clarifyValuesTypePrompt", responseVariantScope),
+    citations: [],
+    actions: getRecognitionTypeActions("cost"),
+  }, { pendingState: "generic_recognition_values", debugLabel: "deterministic:recognition:clarify_values_type" });
+}
+
+if (asksSeparateConversionFee) {
+  return sendJson(200, {
+    answer: getRecognitionGeneralText("separateConversionFee", responseVariantScope),
+    citations: [],
+  }, { debugLabel: "deterministic:recognition:separate_conversion_fee" });
+}
+
+if (asksLegacyAttributionFee) {
+  return sendJson(200, {
+    answer: getRecognitionGeneralText("legacyAttributionFee", responseVariantScope),
+    citations: [],
+  }, { debugLabel: "deterministic:recognition:legacy_attribution_fee" });
+}
+
 if (asksGeneralRecognitionOverview) {
   return sendJson(200, {
     answer: getRecognitionGeneralText("overview", responseVariantScope),
@@ -3024,7 +3424,8 @@ if (asksGenericRecognitionExplanationFollowUp) {
   return sendJson(200, {
     answer: getRecognitionGeneralText("explainPrompt", responseVariantScope),
     citations: [],
-  }, { debugLabel: "deterministic:recognition:explain_prompt" });
+    actions: getRecognitionTypeActions("definition"),
+  }, { pendingState: "generic_recognition_type_choice", debugLabel: "deterministic:recognition:explain_prompt" });
 }
 
 if (mentionsReconhecimento && !mentionsType && !topicHasType) {
@@ -3032,7 +3433,8 @@ if (mentionsReconhecimento && !mentionsType && !topicHasType) {
   return sendJson(200, {
     answer: getRecognitionGeneralText("clarifyTypePrompt", responseVariantScope),
     citations: [],
-  }, { debugLabel: "deterministic:recognition:clarify_type" });
+    actions: getRecognitionTypeActions("definition"),
+  }, { pendingState: "generic_recognition_type_choice", debugLabel: "deterministic:recognition:clarify_type" });
 }
 
 if (
@@ -3046,19 +3448,19 @@ if (
   }, { debugLabel: "deterministic:recognition:emoluments" });
 }
 
-const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
+const specificFallbackDeterministic = specificRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope, shouldShowRecognitionDetailActions);
 if (specificFallbackDeterministic) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento específico");
   return sendJson(200, specificFallbackDeterministic);
 }
 
-const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
+const levelFallbackDeterministic = levelRecognitionDeterministicFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope, shouldShowRecognitionDetailActions);
 if (levelFallbackDeterministic) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento de nível");
   return sendJson(200, levelFallbackDeterministic);
 }
 
-const automaticFallback = automaticRecognitionFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope);
+const automaticFallback = automaticRecognitionFallbackIfNeeded(routedLower, topicHintNorm, responseVariantScope, shouldShowRecognitionDetailActions);
 if (automaticFallback) {
   console.log("✅ DETETADO: Usando fallback determinístico de reconhecimento automático");
   return sendJson(200, automaticFallback);

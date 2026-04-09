@@ -32,8 +32,8 @@
       "A NOVA apresenta a igualdade e inclusão como um compromisso institucional forte. A universidade destaca o seu papel pioneiro na promoção da igualdade de género e inclusão e procura afirmar-se como referência europeia, promovendo uma comunidade mais justa e inclusiva através da sua oferta curricular, investigação, políticas inclusivas e iniciativas estudantis. A página principal está disponível em {{mainPageUrl}}."
     ],
     "clarifyPrompt": [
-      "Posso ajudar sobre igualdade e inclusão na NOVA em vários pontos, por exemplo:\n• contactos do Gabinete de Igualdade e Inclusão\n• política e plano de igualdade de género\n• linguagem inclusiva\n• prevenção e combate ao assédio e discriminação\n• necessidades educativas especiais\n• isenção de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs\n• recursos e projetos\n\nSobre qual destes temas quer informação?",
-      "Dentro de igualdade e inclusão na NOVA, posso dar informação sobre:\n• contactos do Gabinete de Igualdade e Inclusão\n• política e plano de igualdade de género\n• guia de linguagem inclusiva\n• código de conduta para assédio e discriminação\n• necessidades educativas especiais\n• isenção de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs\n• recursos e projetos\n\nQual destes pontos pretende explorar?"
+      "Posso ajudar sobre igualdade e inclusão na NOVA em vários pontos, por exemplo:\n• contactos do Gabinete de Igualdade e Inclusão\n• política e plano de igualdade de género\n• linguagem inclusiva\n• prevenção e combate ao assédio e discriminação\n• necessidades educativas especiais\n• isenção de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs\n• recursos e projetos\n\nPosso aprofundar qualquer um destes temas.\n\nSobre qual destes temas quer informação?",
+      "Relativamente à igualdade e inclusão na NOVA, posso dar informação sobre:\n• contactos do Gabinete de Igualdade e Inclusão\n• política e plano de igualdade de género\n• guia de linguagem inclusiva\n• código de conduta para assédio e discriminação\n• necessidades educativas especiais\n• isenção de propinas para refugiados da guerra na Ucrânia e para estudantes afegãs\n• recursos e projetos\n\nPosso desenvolver qualquer um destes pontos.\n\nQual destes pontos pretende explorar?"
     ],
     "suggestedPrompts": [
       "Quais são os contactos do Gabinete de Igualdade e Inclusão?",
@@ -48,9 +48,12 @@
     "gabinete": {
       "name": "Gabinete de Igualdade e Inclusão da NOVA",
       "email": "igualdade@unl.pt",
-      "contactAnswer": "Pode contactar o Gabinete de Igualdade e Inclusão da NOVA através do e-mail {{email}}. Se quiser, também pode consultar a página principal do tema em {{mainPageUrl}}.",
-      "locationAnswer": "O contacto disponível para o Gabinete de Igualdade e Inclusão da NOVA é o e-mail {{email}}. Para mais informação, pode consultar {{mainPageUrl}}.",
-      "hoursAnswer": "Não tenho indicação de um horário de atendimento específico para o Gabinete de Igualdade e Inclusão da NOVA. O contacto disponível é o e-mail {{email}}."
+      "contactAnswer": "O Gabinete de Igualdade e Inclusão da NOVA pode ser contactado através do e-mail {{email}}. Se quiser, também pode consultar a página principal do tema em {{mainPageUrl}}.",
+      "responsibleAnswer": "Na NOVA, o tema da igualdade e inclusão é acompanhado pelo Gabinete de Igualdade e Inclusão. O contacto disponível é o e-mail {{email}}. Se quiser, também posso indicar a página principal com mais informação: {{mainPageUrl}}.",
+      "officeExistsAnswer": "Sim. A NOVA dispõe do Gabinete de Igualdade e Inclusão. O contacto disponível é o e-mail {{email}}. Se quiser, também posso indicar a página principal com mais informação: {{mainPageUrl}}.",
+      "locationAnswer": "Não tenho indicação de uma morada física específica para o Gabinete de Igualdade e Inclusão da NOVA. O contacto disponível é o e-mail {{email}}. Para mais informação, pode consultar {{mainPageUrl}}.",
+      "hoursAnswer": "Não tenho indicação de um horário específico para o Gabinete de Igualdade e Inclusão da NOVA. O contacto disponível é o e-mail {{email}}.",
+      "attendanceAnswer": "Não tenho indicação de um horário ou modelo de atendimento específico para o Gabinete de Igualdade e Inclusão da NOVA. O contacto disponível é o e-mail {{email}}."
     }
   },
   "topics": {

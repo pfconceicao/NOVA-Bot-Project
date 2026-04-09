@@ -7,24 +7,36 @@
   },
   "general": {
     "valuesOverview": [
-      "Valores por tipo de reconhecimento:\n• Reconhecimento automático: 40€ sem conversão da classificação final, ou 60€ com conversão da classificação para a escala portuguesa.\n• Reconhecimento de nível: sem conversão, 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE) e 520,00 € (Mestrado fora da UE); com conversão, 298,00 € (UE), 680,00 € (Licenciatura fora da UE) e 550,00 € (Mestrado fora da UE).\n• Reconhecimento específico: 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE), 520,00 € (Mestrado fora da UE) e 1.500,00 € em Medicina.\n\nTabela de emolumentos: {{emolumentsUrl}}.",
-      "Os valores variam consoante o tipo de reconhecimento:\n• Reconhecimento automático: 40€ sem conversão da classificação final, ou 60€ com conversão da classificação para a escala portuguesa.\n• Reconhecimento de nível: sem conversão, 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE) e 520,00 € (Mestrado fora da UE); com conversão, 298,00 € (UE), 680,00 € (Licenciatura fora da UE) e 550,00 € (Mestrado fora da UE).\n• Reconhecimento específico: 268,00 € (UE), 650,00 € (Licenciatura ou Doutoramento fora da UE), 520,00 € (Mestrado fora da UE) e 1.500,00 € em Medicina.\n\nA tabela de emolumentos está disponível aqui: {{emolumentsUrl}}."
+      "Valores por tipo de reconhecimento:\n• Reconhecimento automático: 50€ sem conversão da classificação final, ou 75€ com conversão da classificação para a escala portuguesa.\n• Reconhecimento de nível: sem conversão, 268€ (UE) e 650€ (países fora da UE); com conversão, 298€ (Licenciatura ou Mestrado obtidos na UE) e 680€ (países fora da UE).\n• Reconhecimento específico: 298€ (UE), 680€ (países fora da UE) e 1.500€ em Medicina.\n• Pedido de conversão da classificação final apresentado em separado: 75€.\n• Atribuição de classificação em processos ao abrigo de legislação anterior: 275€.\n\nTabela de emolumentos: {{emolumentsUrl}}.",
+      "Os valores variam consoante o tipo de reconhecimento:\n• Reconhecimento automático: 50€ sem conversão da classificação final, ou 75€ com conversão da classificação para a escala portuguesa.\n• Reconhecimento de nível: sem conversão, 268€ (UE) e 650€ (países fora da UE); com conversão, 298€ (Licenciatura ou Mestrado obtidos na UE) e 680€ (países fora da UE).\n• Reconhecimento específico: 298€ (UE), 680€ (países fora da UE) e 1.500€ em Medicina.\n• Pedido de conversão da classificação final apresentado em separado: 75€.\n• Atribuição de classificação em processos ao abrigo de legislação anterior: 275€.\n\nA tabela de emolumentos está disponível aqui: {{emolumentsUrl}}."
     ],
     "overview": [
       "O reconhecimento em Portugal de graus académicos e diplomas de ensino superior atribuídos por instituições de ensino superior estrangeiras é regulado, desde 1 de janeiro de 2019, pelo Decreto-Lei n.º 66/2018: {{legalDecreeUrl}}. Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático: para graus/diplomas que constam do elenco oficialmente reconhecido.\n• Reconhecimento de nível: para reconhecer por comparabilidade o nível do grau ou diploma estrangeiro.\n• Reconhecimento específico: para reconhecer um grau ou diploma estrangeiro como idêntico a um grau ou diploma português numa área e especialidade determinadas.\n\nSe quiser, posso explicar qualquer um deles.",
       "Em Portugal, o reconhecimento de graus académicos e diplomas de ensino superior estrangeiros é regulado, desde 1 de janeiro de 2019, pelo Decreto-Lei n.º 66/2018: {{legalDecreeUrl}}. Há três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático: para graus ou diplomas que constam do elenco oficialmente reconhecido.\n• Reconhecimento de nível: para reconhecer por comparabilidade o nível do grau ou diploma estrangeiro.\n• Reconhecimento específico: para reconhecer um grau ou diploma estrangeiro como idêntico a um grau ou diploma português numa área e especialidade determinadas.\n\nSe pretender, posso explicar qualquer um deles."
     ],
     "explainPrompt": [
-      "Posso explicar qualquer um dos três tipos de reconhecimento:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nQual deles pretende que eu explique?",
-      "Posso detalhar qualquer um dos três tipos de reconhecimento:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nQual deles quer que eu explique?"
+      "Posso explicar qualquer um dos três tipos de reconhecimento:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso desenvolver qualquer um destes tipos.\n\nQual deles pretende que eu explique?",
+      "Posso detalhar qualquer um dos três tipos de reconhecimento:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso aprofundar qualquer um destes tipos.\n\nQual deles quer que eu explique?"
     ],
     "clarifyTypePrompt": [
-      "Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nA qual deles se refere?",
-      "Há três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nQual deles pretende indicar?"
+      "Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso esclarecer qualquer um deles.\n\nA qual deles se refere?",
+      "Há três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso dar mais detalhe sobre qualquer um deles.\n\nQual deles pretende indicar?"
+    ],
+    "clarifyValuesTypePrompt": [
+      "Para qual dos tipos de reconhecimento quer obter os valores?\n\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso indicar os valores de qualquer um deles.",
+      "Qual deles pretende indicar?\n\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso detalhar os valores de qualquer um deles."
     ],
     "emolumentsPrompt": [
       "Pode consultar a tabela de emolumentos aqui: {{emolumentsUrl}}. Se quiser, também posso indicar os valores do reconhecimento automático, de nível ou específico.",
       "A tabela de emolumentos está disponível aqui: {{emolumentsUrl}}. Se quiser, também posso dizer-lhe os valores do reconhecimento automático, de nível ou específico."
+    ],
+    "separateConversionFee": [
+      "No seguimento de processos de reconhecimento, pode ainda ser apresentado em separado um pedido de conversão da classificação final, para Licenciatura ou Mestrado. O valor é de 75€. Pode consultar a tabela de emolumentos em {{emolumentsUrl}}.",
+      "O pedido de conversão da classificação final apresentado em separado, no seguimento de processos de reconhecimento de Licenciatura ou Mestrado, tem o valor de 75€. A tabela de emolumentos está disponível em {{emolumentsUrl}}."
+    ],
+    "legacyAttributionFee": [
+      "No seguimento de processos de reconhecimento realizados ao abrigo de legislação anterior, pode ser solicitada a atribuição de classificação. O valor é de 275€. Pode consultar a tabela de emolumentos em {{emolumentsUrl}}.",
+      "A atribuição de classificação em processos de reconhecimento realizados ao abrigo de legislação anterior tem o valor de 275€. A tabela de emolumentos está disponível em {{emolumentsUrl}}."
     ]
   },
   "contacts": {
@@ -32,9 +44,11 @@
       "address": "Reitoria da Universidade NOVA de Lisboa, UAA - Unidade de Assuntos Académicos, Campus de Campolide, 1099-085 Lisboa",
       "phone": "213715600",
       "hours": "10h30 às 12h30 e das 14h30 às 16h30, em dias úteis",
+      "officeExistsAnswer": "Sim. Os assuntos de reconhecimento académico na NOVA são tratados pela UAA, a Unidade de Assuntos Académicos da Reitoria. Se quiser, posso indicar os contactos, a morada ou o horário de atendimento.",
       "locationAnswer": "Para assuntos de reconhecimento académico na NOVA, o atendimento é na {{address}}. Telefone: {{phone}}. Horário de funcionamento: {{hours}}.",
       "contactAnswer": "Para assuntos de reconhecimento académico na NOVA, pode contactar a {{address}}, no telefone {{phone}}. Atendimento {{hours}}.",
-      "hoursAnswer": "O horário de funcionamento da UAA (Unidade de Assuntos Académicos) da Reitoria da Universidade NOVA de Lisboa é {{hours}}."
+      "hoursAnswer": "O horário de funcionamento da UAA (Unidade de Assuntos Académicos) da Reitoria da Universidade NOVA de Lisboa é {{hours}}.",
+      "attendanceAnswer": "O atendimento da UAA funciona no horário {{hours}}. Se precisar, também posso indicar a morada e o telefone."
     }
   },
   "types": {
@@ -50,8 +64,8 @@
       ],
       "documents": "Deve anexar ao formulário online: (1) cópia do diploma; (2) documento com a classificação final atribuída, a escala de classificações utilizada e a classificação mínima de aprovação. Este segundo documento é aplicável quando pretende conversão da nota final para a escala portuguesa.",
       "cost": [
-        "Custa 40€ sem conversão da classificação final para a escala portuguesa (0 a 20 valores), ou 60€ com conversão da classificação para a escala portuguesa. Tabela de emolumentos: {{emolumentsUrl}}.",
-        "O valor é de 40€ sem conversão da classificação final para a escala portuguesa (0 a 20 valores), ou 60€ com conversão da classificação para a escala portuguesa. Pode consultar a tabela de emolumentos em {{emolumentsUrl}}."
+        "Custa 50€ sem conversão da classificação final para a escala portuguesa (0 a 20 valores), ou 75€ com conversão da classificação para a escala portuguesa. Tabela de emolumentos: {{emolumentsUrl}}.",
+        "O valor é de 50€ sem conversão da classificação final para a escala portuguesa (0 a 20 valores), ou 75€ com conversão da classificação para a escala portuguesa. Pode consultar a tabela de emolumentos em {{emolumentsUrl}}."
       ],
       "time": [
         "O prazo é de 30 dias após a instrução completa do processo e o respetivo pagamento.",
@@ -63,14 +77,18 @@
         "O reconhecimento de nível é o ato que permite reconhecer por comparabilidade, de forma individualizada, um grau ou diploma de ensino superior estrangeiro como tendo um nível correspondente a um grau académico ou diploma de ensino superior português.",
         "O reconhecimento de nível permite reconhecer, por comparabilidade e de forma individualizada, um grau ou diploma de ensino superior estrangeiro como tendo um nível correspondente a um grau académico ou diploma de ensino superior português."
       ],
+      "degrees": [
+        "Aplica-se a graus ou diplomas de ensino superior estrangeiros cujo nível se pretende reconhecer por comparabilidade com um grau académico ou diploma de ensino superior português.",
+        "O reconhecimento de nível aplica-se a graus ou diplomas de ensino superior estrangeiros, para determinar a correspondência do seu nível com um grau académico ou diploma de ensino superior português."
+      ],
       "where": [
         "Para reconhecimento de nível, o pedido é submetido através do formulário online da DGES: {{recognitionFormUrl}}.",
         "O pedido de reconhecimento de nível é submetido através do formulário online da DGES: {{recognitionFormUrl}}."
       ],
       "documents": "Deve anexar ao formulário online:\n• Cópia do Diploma;\n• Histórico escolar;\n• Programa das disciplinas com a informação dos conteúdos curriculares estudados em cada disciplina;\n• Declaração da Universidade mencionando a classificação final no seu curso, a escala numérica de classificação final (ex. de 0 a 10) e a nota mínima de aprovação (caso pretenda a conversão da média final para a escala portuguesa);\n• Trabalho final: Monografia (Licenciatura), Dissertação (Mestrado) ou Tese (PhD) em PDF (se aplicável).",
       "cost": [
-        "Reconhecimento de nível sem conversão da classificação final: Licenciatura, Mestrado ou Doutoramento (obtidos em países da UE): 268,00 €; Licenciatura ou Doutoramento (obtidos em países exteriores à UE): 650,00 €; Mestrado (obtido em países exteriores à UE): 520,00 €. Reconhecimento de nível com conversão da classificação final: Licenciatura ou Mestrado (obtidos em países da UE): 298,00 €; Licenciatura (obtida em países exteriores à UE): 680,00 €; Mestrado (obtido em países exteriores à UE): 550,00 €. Tabela de emolumentos: {{emolumentsUrl}}.",
-        "No reconhecimento de nível, sem conversão da classificação final, os valores são: 268,00 € (UE) para Licenciatura, Mestrado ou Doutoramento, 650,00 € para Licenciatura ou Doutoramento obtidos fora da UE, e 520,00 € para Mestrado obtido fora da UE. Com conversão da classificação final, os valores são: 298,00 € (UE), 680,00 € para Licenciatura fora da UE e 550,00 € para Mestrado fora da UE. Tabela de emolumentos: {{emolumentsUrl}}."
+        "Reconhecimento de nível sem conversão da classificação final: 268€ para Licenciatura, Mestrado ou Doutoramento obtidos em países da UE, e 650€ para Licenciatura, Mestrado ou Doutoramento obtidos em países fora da UE. Reconhecimento de nível com conversão da classificação final: 298€ para Licenciatura ou Mestrado obtidos na UE, e 680€ para Licenciatura, Mestrado ou Doutoramento obtidos fora da UE. Tabela de emolumentos: {{emolumentsUrl}}.",
+        "No reconhecimento de nível, sem conversão da classificação final, o valor é de 268€ para graus obtidos na UE e 650€ para graus obtidos fora da UE. Com conversão da classificação final, o valor é de 298€ para Licenciatura ou Mestrado obtidos na UE e 680€ para graus obtidos fora da UE. Tabela de emolumentos: {{emolumentsUrl}}."
       ],
       "time": [
         "O prazo é de 90 dias úteis após a instrução completa do processo e o respetivo pagamento.",
@@ -82,14 +100,18 @@
         "O reconhecimento específico é o ato que permite reconhecer um grau ou diploma de ensino superior estrangeiro idêntico a um grau académico ou diploma de ensino superior português, através de uma análise casuística do nível, duração e conteúdo programático, numa determinada área de formação, ramo de conhecimento ou especialidade.",
         "O reconhecimento específico permite reconhecer um grau ou diploma de ensino superior estrangeiro como idêntico a um grau académico ou diploma de ensino superior português, mediante uma análise casuística do nível, da duração e do conteúdo programático, numa determinada área de formação, ramo de conhecimento ou especialidade."
       ],
+      "degrees": [
+        "Aplica-se a graus ou diplomas de ensino superior estrangeiros que se pretendem reconhecer como idênticos a um grau académico ou diploma de ensino superior português, numa área de formação, ramo de conhecimento ou especialidade determinados.",
+        "O reconhecimento específico aplica-se a graus ou diplomas de ensino superior estrangeiros cuja equivalência se pretende obter face a um grau académico ou diploma de ensino superior português, numa área ou especialidade concretas."
+      ],
       "where": [
         "Para reconhecimento específico, o pedido é submetido através do formulário online da DGES: {{recognitionFormUrl}}.",
         "O pedido de reconhecimento específico é submetido através do formulário online da DGES: {{recognitionFormUrl}}."
       ],
       "documents": "Deve anexar ao formulário online: • Cópia do Diploma; • Histórico escolar; • Programa das disciplinas com a informação dos conteúdos curriculares estudados em cada disciplina; • Trabalho final: Monografia (Licenciatura), Dissertação (Mestrado) ou Tese (PhD) em PDF (se aplicável).",
       "cost": [
-        "Reconhecimentos Específicos (com nota final atribuída pelo júri): • Licenciatura, Mestrado ou Doutoramento (obtido em países da UE): 268,00 €; • Licenciatura ou Doutoramento (obtido em países exteriores à UE): 650,00 €; • Mestrado (obtido em países exteriores à UE): 520,00 €; • Reconhecimento específico em Medicina: 1.500,00 €. Tabela de emolumentos: {{emolumentsUrl}}.",
-        "No reconhecimento específico, com nota final atribuída pelo júri, os valores são: 268,00 € para Licenciatura, Mestrado ou Doutoramento obtidos em países da UE; 650,00 € para Licenciatura ou Doutoramento obtidos fora da UE; 520,00 € para Mestrado obtido fora da UE; e 1.500,00 € em Medicina. A tabela de emolumentos está em {{emolumentsUrl}}."
+        "Reconhecimentos específicos com nota final atribuída pelo júri: 298€ para Licenciatura, Mestrado ou Doutoramento obtidos em países da UE; 680€ para Licenciatura, Mestrado ou Doutoramento obtidos em países fora da UE; e 1.500€ em Medicina. Tabela de emolumentos: {{emolumentsUrl}}.",
+        "No reconhecimento específico, com nota final atribuída pelo júri, os valores são: 298€ para Licenciatura, Mestrado ou Doutoramento obtidos em países da UE; 680€ para Licenciatura, Mestrado ou Doutoramento obtidos fora da UE; e 1.500€ em Medicina. A tabela de emolumentos está em {{emolumentsUrl}}."
       ],
       "time": [
         "O prazo é de 90 dias úteis após a instrução completa do processo e o respetivo pagamento.",

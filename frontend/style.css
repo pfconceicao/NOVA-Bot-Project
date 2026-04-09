@@ -264,6 +264,9 @@ body {
 }
 
 .btn-option {
+  display: flex;
+  justify-content: flex-start;
+  text-align: left;
   border: none;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--chat-green), var(--chat-green-dark));

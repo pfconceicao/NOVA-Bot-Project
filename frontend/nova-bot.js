@@ -235,15 +235,19 @@ function createMessage({ role, html, meta, citations = [], actions = [] }) {
       const actionsWrap = document.createElement("div");
       actionsWrap.className = "message-actions";
 
-      actions.forEach((actionLabel) => {
+      actions.forEach((actionItem) => {
+        const actionLabel = typeof actionItem === "string" ? actionItem : String(actionItem?.label ?? actionItem?.value ?? "");
+        const actionValue = typeof actionItem === "string" ? actionItem : String(actionItem?.value ?? actionItem?.label ?? "");
+        if (!actionLabel || !actionValue) return;
+
         const button = document.createElement("button");
         button.type = "button";
         button.className = "btn-option";
         button.textContent = actionLabel;
         button.addEventListener("click", () => {
-          input.value = actionLabel;
+          input.value = actionValue;
           autoResizeInput();
-          handleUserMessage(actionLabel);
+          handleUserMessage(actionValue);
         });
         actionsWrap.appendChild(button);
       });
@@ -377,15 +381,29 @@ async function getBackendResponse(question) {
 }
 
 async function maybeShowTopicSuggestions(question, responseData) {
-  const normalized = question.toLowerCase();
   const answer = String(responseData?.answer ?? "");
+  const answerNorm = answer
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 
-  if (normalized.includes("reconhecimento") && answer.includes("A qual deles se refere?")) {
+  const hasRecognitionTypeList =
+    answerNorm.includes("reconhecimento automatico") &&
+    answerNorm.includes("reconhecimento de nivel") &&
+    answerNorm.includes("reconhecimento especifico");
+
+  const asksToChooseRecognitionType =
+    answerNorm.includes("a qual deles se refere") ||
+    answerNorm.includes("qual deles pretende indicar") ||
+    answerNorm.includes("qual deles pretende que eu explique") ||
+    answerNorm.includes("qual deles quer que eu explique");
+
+  if (hasRecognitionTypeList && asksToChooseRecognitionType) {
     await appendBotMessage(answer, {
-      actions: [
-        "Reconhecimento automático",
-        "Reconhecimento de nível",
-        "Reconhecimento específico",
+      actions: responseData?.actions || [
+        { label: "Reconhecimento automático", value: "O que é o reconhecimento automático?" },
+        { label: "Reconhecimento de nível", value: "O que é o reconhecimento de nível?" },
+        { label: "Reconhecimento específico", value: "O que é o reconhecimento específico?" },
       ],
       simulateTyping: true,
     });
@@ -419,14 +437,15 @@ async function handleUserMessage(rawText) {
 
     if (responseData?.blocked) {
       await appendBotMessage(responseData.answer || translations.blocked[state.currentLanguage], {
-        meta: responseData.reason || "blocked",
-        actions: quickPrompts[state.currentLanguage],
+        meta: null,
+        actions: [],
       });
       return;
     }
 
     await appendBotMessage(responseData.answer || translations.error[state.currentLanguage], {
       citations: responseData.citations || [],
+      actions: responseData.actions || [],
     });
   } catch (error) {
     removeTypingIndicator(typingIndicator);
