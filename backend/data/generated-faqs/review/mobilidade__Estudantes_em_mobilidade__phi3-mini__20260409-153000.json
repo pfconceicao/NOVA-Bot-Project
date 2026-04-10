@@ -1,0 +1,46 @@
+{
+  "status": "pending_review",
+  "source": "mobilidade__Estudantes_em_mobilidade.ndjson",
+  "model": "phi3:mini",
+  "generatedAt": "2026-04-09T14:30:00.610Z",
+  "sourceType": "indexed-document",
+  "generationConfig": {
+    "faqCount": 3,
+    "maxContextChars": 1200,
+    "maxContextChunks": 1,
+    "maxBatches": 3,
+    "timeoutMs": 120000
+  },
+  "faqs": [
+    {
+      "question": "Quando é necessário matricular para participar em programas de mobilidade?",
+      "answer": "É necessário matricular-se o mais cedo possível, após contactar o Gabinete de Mobilidades Internacionais.",
+      "sourcePages": [
+        1
+      ],
+      "sourceChunkIndexes": [
+        0
+      ]
+    },
+    {
+      "question": "Como posso obter as regalias para estudantes em mobilidade?",
+      "answer": "Após a matrícula, receberão um cartão de estudante que confere regalias.",
+      "sourcePages": [
+        1
+      ],
+      "sourceChunkIndexes": [
+        0
+      ]
+    },
+    {
+      "question": "Como posso obter acesso ao Sistema Nacional de Saúde enquries?",
+      "answer": "Se você é estudante europeu, pode solicitar o Cartão Europeu de Seguro de Doença para beneficiar do sistema nacional.",
+      "sourcePages": [
+        1
+      ],
+      "sourceChunkIndexes": [
+        1
+      ]
+    }
+  ]
+}
