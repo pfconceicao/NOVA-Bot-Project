@@ -12,6 +12,7 @@ const decreaseFontBtn = document.getElementById("decrease-font");
 const toggleThemeBtn = document.getElementById("toggle-theme");
 
 const API_URL = "http://localhost:3000/ask";
+const TRANSLATE_API_URL = "http://localhost:3000/translate";
 const FONT_SCALE_MIN = 0.9;
 const FONT_SCALE_MAX = 1.2;
 const FONT_SCALE_STEP = 0.05;
@@ -27,16 +28,18 @@ const state = {
   fontScale: 1,
   isAccessibleTheme: false,
   isWaitingResponse: false,
+  chatVersion: 0,
+  chatHistory: [],
 };
 
 const translations = {
   welcome: {
-    pt: "Olá. Estou aqui para ajudar. Faça a sua pergunta quando quiser.",
-    en: "Hello. I am here to help. Ask your question whenever you are ready.",
+    pt: "Olá. Sou o NiA, o assistente virtual de informação da NOVA. Pode escrever diretamente a sua pergunta ou, se preferir, ver alguns tópicos para começar.",
+    en: "Hello. I am NiA, NOVA's virtual information assistant. You can type your question directly or, if you prefer, view a few topics to get started.",
   },
   hint: {
-    pt: "Pode fazer follow-ups na mesma conversa ou iniciar um novo chat para limpar o contexto.",
-    en: "You can ask follow-up questions in the same chat or start a new chat to clear context.",
+    pt: "Aqui tem alguns tópicos por onde pode começar.",
+    en: "Here are a few topics you can start with.",
   },
   placeholder: {
     pt: "Escreve aqui…",
@@ -66,6 +69,14 @@ const translations = {
     pt: "Sugestões",
     en: "Suggestions",
   },
+  suggestionsCta: {
+    pt: "Se preferir, posso sugerir alguns tópicos para começar.",
+    en: "If you prefer, I can suggest a few topics to get started.",
+  },
+  showSuggestionsButton: {
+    pt: "Ver sugestões",
+    en: "Show suggestions",
+  },
   blocked: {
     pt: "Essa pergunta parece fora do âmbito do bot. Tente reformular no contexto da NOVA ou do reconhecimento académico.",
     en: "That question seems outside the bot's scope. Try rephrasing it in the NOVA or academic recognition context.",
@@ -87,12 +98,71 @@ const quickPrompts = {
   ],
 };
 
+const FAST_TRANSLATION_PAIRS = [
+  ["reconhecimento", "recognition"],
+  ["reconhecimento automático", "automatic recognition"],
+  ["reconhecimento de nível", "level recognition"],
+  ["reconhecimento específico", "specific recognition"],
+  [
+    "Há três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso dar mais detalhe sobre qualquer um deles.\n\nQual deles pretende indicar?",
+    "There are three types of recognition for foreign degrees and diplomas:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nI can clarify any of them.\n\nWhich one do you want to know about?"
+  ],
+  [
+    "Existem três tipos de reconhecimento de graus e diplomas estrangeiros:\n• Reconhecimento automático\n• Reconhecimento de nível\n• Reconhecimento específico\n\nPosso esclarecer qualquer um deles.\n\nA qual deles se refere?",
+    "There are three types of recognition for foreign degrees and diplomas:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nI can clarify any of them.\n\nWhich one do you want to know about?"
+  ],
+  ["qual é o horário da uaa?", "what are the uaa opening hours?"],
+  ["horário uaa", "uaa opening hours"],
+  ["o que é o reconhecimento automático?", "what is automatic recognition?"],
+  ["que documentos entregar para reconhecimento de nível?", "which documents are required for level recognition?"],
+  ["quanto custa o reconhecimento específico?", "how much does specific recognition cost?"],
+  ["custos", "fees"],
+  ["documentos", "documents"],
+  ["onde solicitar", "where to apply"],
+  ["prazo", "timeline"],
+];
+
+const FAST_TRANSLATIONS = buildFastTranslations();
+
 function createSessionId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
 
   return `nova-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeLookupText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function buildFastTranslations() {
+  const map = new Map();
+
+  FAST_TRANSLATION_PAIRS.forEach(([ptText, enText]) => {
+    map.set(`pt:en:${normalizeLookupText(ptText)}`, enText);
+    map.set(`en:pt:${normalizeLookupText(enText)}`, ptText);
+  });
+
+  quickPrompts.pt.forEach((ptPrompt, index) => {
+    const enPrompt = quickPrompts.en[index];
+    map.set(`pt:en:${normalizeLookupText(ptPrompt)}`, enPrompt);
+    map.set(`en:pt:${normalizeLookupText(enPrompt)}`, ptPrompt);
+  });
+
+  return map;
+}
+
+function getFastTranslation(text, sourceLanguage, targetLanguage) {
+  const normalizedText = normalizeLookupText(text);
+  if (!normalizedText) return "";
+
+  return FAST_TRANSLATIONS.get(`${sourceLanguage}:${targetLanguage}:${normalizedText}`) || "";
 }
 
 function escapeHtml(value) {
@@ -159,6 +229,54 @@ function scrollMessagesToBottom() {
   messages.scrollTop = messages.scrollHeight;
 }
 
+function highlightExistingEntry(node) {
+  if (!node) return;
+
+  node.classList.remove("message-rehighlight");
+  void node.offsetWidth;
+  node.classList.add("message-rehighlight");
+
+  window.setTimeout(() => {
+    node.classList.remove("message-rehighlight");
+  }, 1400);
+}
+
+function normalizeAction(actionItem) {
+  if (typeof actionItem === "string") {
+    return {
+      label: actionItem,
+      value: actionItem,
+      userText: actionItem,
+      submitValue: actionItem,
+      type: null,
+      appearance: null,
+      localizedLabels: null,
+      localizedUserTexts: null,
+      localizedSubmitValues: null,
+    };
+  }
+
+  return {
+    label: String(actionItem?.label ?? actionItem?.value ?? ""),
+    value: String(actionItem?.value ?? actionItem?.label ?? ""),
+    userText: String(actionItem?.userText ?? actionItem?.label ?? actionItem?.value ?? ""),
+    submitValue: String(actionItem?.submitValue ?? actionItem?.value ?? actionItem?.label ?? ""),
+    type: actionItem?.type || null,
+    appearance: actionItem?.appearance || null,
+    localizedLabels: actionItem?.localizedLabels || null,
+    localizedUserTexts: actionItem?.localizedUserTexts || null,
+    localizedSubmitValues: actionItem?.localizedSubmitValues || null,
+  };
+}
+
+function cloneActions(actions = []) {
+  return actions.map((actionItem) => ({ ...normalizeAction(actionItem) }));
+}
+
+function getAlternateLanguage(language) {
+  return language === "pt" ? "en" : "pt";
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -181,9 +299,12 @@ function setLoadingState(isLoading) {
   input.disabled = isLoading;
 }
 
-function createMessage({ role, html, meta, citations = [], actions = [] }) {
+function createMessage({ role, html, meta, citations = [], actions = [], entryKey = "" }) {
   const article = document.createElement("article");
   article.className = `chat-message ${role}`;
+  if (entryKey) {
+    article.dataset.entryKey = entryKey;
+  }
 
   const badge = document.createElement("div");
   badge.className = "message-role";
@@ -236,8 +357,25 @@ function createMessage({ role, html, meta, citations = [], actions = [] }) {
       actionsWrap.className = "message-actions";
 
       actions.forEach((actionItem) => {
+        if (actionItem?.type === "showQuickPrompts") {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "btn-option";
+          if (actionItem?.appearance === "subtle") {
+            button.classList.add("subtle");
+          }
+          button.textContent = String(actionItem?.label ?? "");
+          button.addEventListener("click", () => {
+            void showQuickPrompts();
+          });
+          actionsWrap.appendChild(button);
+          return;
+        }
+
         const actionLabel = typeof actionItem === "string" ? actionItem : String(actionItem?.label ?? actionItem?.value ?? "");
         const actionValue = typeof actionItem === "string" ? actionItem : String(actionItem?.value ?? actionItem?.label ?? "");
+        const actionSubmitValue = typeof actionItem === "string" ? actionValue : String(actionItem?.submitValue ?? actionValue);
+        const actionUserText = typeof actionItem === "string" ? actionValue : String(actionItem?.userText ?? actionLabel);
         if (!actionLabel || !actionValue) return;
 
         const button = document.createElement("button");
@@ -245,9 +383,12 @@ function createMessage({ role, html, meta, citations = [], actions = [] }) {
         button.className = "btn-option";
         button.textContent = actionLabel;
         button.addEventListener("click", () => {
-          input.value = actionValue;
+          input.value = actionUserText;
           autoResizeInput();
-          handleUserMessage(actionValue);
+          handleUserMessage(actionUserText, actionSubmitValue, {
+            localizedUserTexts: actionItem?.localizedUserTexts || null,
+            localizedSubmitValues: actionItem?.localizedSubmitValues || null,
+          });
         });
         actionsWrap.appendChild(button);
       });
@@ -264,6 +405,7 @@ async function appendBotMessage(answer, options = {}) {
     meta: options.meta,
     citations: options.citations || [],
     actions: options.actions || [],
+    entryKey: options.entryKey || "",
   });
 
   const plainText = String(answer ?? "").replace(/\s+/g, " ").trim();
@@ -300,11 +442,320 @@ function appendSystemMessage(text) {
   createMessage({ role: "system", html: `<p>${escapeHtml(text)}</p>` });
 }
 
+async function requestTranslation(text, sourceLanguage, targetLanguage) {
+  const trimmedText = String(text ?? "").trim();
+  if (!trimmedText || sourceLanguage === targetLanguage) return trimmedText;
+
+  const fastTranslation = getFastTranslation(trimmedText, sourceLanguage, targetLanguage);
+  if (fastTranslation) return fastTranslation;
+
+  const response = await fetch(TRANSLATE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: trimmedText,
+      sourceLanguage,
+      targetLanguage,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || `HTTP ${response.status}`);
+  }
+
+  return String(data?.text ?? trimmedText).trim();
+}
+
+function buildQuickPromptActions(language) {
+  const alternateLanguage = getAlternateLanguage(language);
+
+  return quickPrompts[language].map((prompt, index) => ({
+    label: prompt,
+    value: prompt,
+    userText: prompt,
+    submitValue: prompt,
+    type: null,
+    localizedLabels: {
+      [language]: prompt,
+      [alternateLanguage]: quickPrompts[alternateLanguage][index],
+    },
+    localizedUserTexts: {
+      [language]: prompt,
+      [alternateLanguage]: quickPrompts[alternateLanguage][index],
+    },
+    localizedSubmitValues: {
+      [language]: prompt,
+      [alternateLanguage]: quickPrompts[alternateLanguage][index],
+    },
+  }));
+}
+
+function buildSuggestionCtaActions(language) {
+  return [{
+    label: translations.showSuggestionsButton[language],
+    value: translations.showSuggestionsButton[language],
+    userText: translations.showSuggestionsButton[language],
+    submitValue: translations.showSuggestionsButton[language],
+    type: "showQuickPrompts",
+    appearance: "subtle",
+  }];
+}
+
+async function localizeActionsForEntry(entry, language) {
+  if (entry.actionPreset === "quickPrompts") {
+    return buildQuickPromptActions(language);
+  }
+
+  if (entry.actionPreset === "suggestionsCta") {
+    return buildSuggestionCtaActions(language);
+  }
+
+  const originalActions = cloneActions(entry.originalActions || []);
+  if (!originalActions.length) return [];
+  if (entry.localizedActions?.[language]) return cloneActions(entry.localizedActions[language]);
+  if (entry.originalLanguage === language) return originalActions;
+
+  const localizedActions = await Promise.all(originalActions.map(async (actionItem) => ({
+    ...actionItem,
+    label: await requestTranslation(actionItem.label, entry.originalLanguage, language),
+    value: await requestTranslation(actionItem.value, entry.originalLanguage, language),
+    userText: await requestTranslation(actionItem.userText, entry.originalLanguage, language),
+    submitValue: await requestTranslation(actionItem.submitValue, entry.originalLanguage, language),
+  })));
+
+  entry.localizedActions[language] = cloneActions(localizedActions);
+
+  return localizedActions;
+}
+
+async function localizeEntryText(entry, language) {
+  if (entry.i18nKey) {
+    return translations[entry.i18nKey][language];
+  }
+
+  if (entry.localizedTexts?.[language]) {
+    return entry.localizedTexts[language];
+  }
+
+  if (entry.originalLanguage === language) {
+    return entry.originalText;
+  }
+
+  const localizedText = await requestTranslation(entry.originalText, entry.originalLanguage, language);
+  entry.localizedTexts[language] = localizedText;
+  return localizedText;
+}
+
+async function localizeSourceQuestion(entry, language) {
+  if (!entry.sourceQuestion) return "";
+
+  if (entry.localizedQuestions?.[language]) {
+    return entry.localizedQuestions[language];
+  }
+
+  const localizedQuestion = entry.originalLanguage === language
+    ? entry.sourceQuestion
+    : await requestTranslation(entry.sourceQuestion, entry.originalLanguage, language);
+
+  entry.localizedQuestions[language] = localizedQuestion;
+  return localizedQuestion;
+}
+
+async function localizeBotEntryFromBackend(entry, language) {
+  if (!entry.sourceQuestion) return false;
+
+  const requestQuestion = String(entry.sourceQuestion ?? "").trim();
+  if (!requestQuestion) return false;
+
+  const responseData = await getBackendResponse(requestQuestion, {
+    language,
+    sessionId: null,
+  });
+
+  entry.localizedTexts[language] = String(responseData?.answer ?? "").trim();
+  entry.localizedActions[language] = cloneActions(responseData?.actions || []);
+
+  if (!entry.localizedQuestions?.[language]) {
+    void localizeSourceQuestion(entry, language).catch(() => {
+      // The bot answer can still be regenerated even if translating the original user question fails.
+    });
+  }
+
+  return true;
+}
+
+function localizeEntryMeta(entry, language) {
+  if (entry.metaI18nKey) {
+    return translations[entry.metaI18nKey][language];
+  }
+
+  return entry.meta || null;
+}
+
+async function renderHistoryEntry(entry, options = {}) {
+  const text = await localizeEntryText(entry, state.currentLanguage);
+  const meta = localizeEntryMeta(entry, state.currentLanguage);
+  const actions = await localizeActionsForEntry(entry, state.currentLanguage);
+
+  if (entry.role === "user") {
+    createMessage({ role: "user", html: `<p>${escapeHtml(text)}</p>`, entryKey: entry.entryKey });
+    return;
+  }
+
+  if (entry.role === "system") {
+    createMessage({ role: "system", html: `<p>${escapeHtml(text)}</p>`, entryKey: entry.entryKey });
+    return;
+  }
+
+  await appendBotMessage(text, {
+    entryKey: entry.entryKey,
+    meta,
+    citations: entry.citations || [],
+    actions,
+    simulateTyping: options.simulateTyping ?? (entry.simulateTyping !== false),
+  });
+}
+
+async function ensureEntryLocalized(entry, language) {
+  if (entry.i18nKey || entry.originalLanguage === language) return;
+
+  entry.pendingLocalizations = entry.pendingLocalizations || {};
+  if (entry.pendingLocalizations[language]) {
+    await Promise.race([
+      entry.pendingLocalizations[language],
+      wait(1200),
+    ]);
+    return;
+  }
+
+  if (entry.localizedTexts?.[language] && (entry.localizedActions?.[language] || !(entry.originalActions || []).length)) {
+    return;
+  }
+
+  entry.pendingLocalizations[language] = (async () => {
+    if (entry.role === "bot" && await localizeBotEntryFromBackend(entry, language)) {
+      return;
+    }
+
+    await Promise.all([
+      localizeEntryText(entry, language),
+      localizeActionsForEntry(entry, language),
+    ]);
+  })().finally(() => {
+    delete entry.pendingLocalizations[language];
+  });
+
+  await entry.pendingLocalizations[language];
+}
+
+function primeEntryLocalization(entry) {
+  if (entry.i18nKey) return;
+
+  // Do not compete with the visible reply by regenerating bot messages in the background.
+  if (entry.role === "bot") return;
+
+  const targetLanguage = getAlternateLanguage(entry.originalLanguage);
+  void ensureEntryLocalized(entry, targetLanguage).catch((error) => {
+    console.warn("Falha a pré-carregar tradução da mensagem:", error);
+  });
+}
+
+async function addMessageEntry(entry) {
+  const entryLanguage = entry.originalLanguage || state.currentLanguage;
+  const localizedTexts = entry.localizedTexts
+    ? { ...entry.localizedTexts }
+    : {};
+  if (!entry.i18nKey) {
+    localizedTexts[entryLanguage] = entry.originalText || "";
+  }
+
+  const localizedQuestions = entry.localizedQuestions
+    ? { ...entry.localizedQuestions }
+    : {};
+  if (entry.sourceQuestion) {
+    localizedQuestions[entryLanguage] = entry.sourceQuestion;
+  }
+
+  const normalizedEntry = {
+    entryKey: entry.entryKey || `entry-${Date.now()}-${state.chatHistory.length + 1}`,
+    role: entry.role || "bot",
+    originalText: entry.originalText || "",
+    originalLanguage: entryLanguage,
+    meta: entry.meta || null,
+    metaI18nKey: entry.metaI18nKey || null,
+    citations: entry.citations || [],
+    originalActions: cloneActions(entry.originalActions || []),
+    i18nKey: entry.i18nKey || null,
+    actionPreset: entry.actionPreset || null,
+    simulateTyping: entry.simulateTyping,
+    localizedTexts: entry.i18nKey ? {} : localizedTexts,
+    localizedActions: { [entryLanguage]: cloneActions(entry.originalActions || []) },
+    sourceQuestion: entry.sourceQuestion || "",
+    localizedQuestions,
+    pendingLocalizations: {},
+  };
+
+  state.chatHistory.push(normalizedEntry);
+  primeEntryLocalization(normalizedEntry);
+  await renderHistoryEntry(normalizedEntry);
+}
+
+async function renderChatHistory(options = {}) {
+  messages.innerHTML = "";
+  for (const entry of state.chatHistory) {
+    await renderHistoryEntry(entry, options);
+  }
+}
+
 async function showQuickPrompts() {
-  await appendBotMessage(translations.hint[state.currentLanguage], {
-    actions: quickPrompts[state.currentLanguage],
-    meta: translations.suggestionsTitle[state.currentLanguage],
+  const existingEntry = state.chatHistory.find((entry) => entry.actionPreset === "quickPrompts");
+  if (existingEntry?.entryKey) {
+    const existingNode = messages.querySelector(`[data-entry-key="${existingEntry.entryKey}"]`);
+    if (existingNode) {
+      existingNode.scrollIntoView({ behavior: "smooth", block: "center" });
+      highlightExistingEntry(existingNode);
+      return;
+    }
+  }
+
+  await addMessageEntry({
+    role: "bot",
+    i18nKey: "hint",
+    metaI18nKey: "suggestionsTitle",
+    actionPreset: "quickPrompts",
     simulateTyping: false,
+  });
+}
+
+function resetChatUiState({ closeWindow = false } = {}) {
+  state.chatVersion += 1;
+  state.currentSessionId = createSessionId();
+  state.chatHistory = [];
+  messages.innerHTML = "";
+  setLoadingState(false);
+
+  if (closeWindow) {
+    botWindow.classList.remove("open");
+    botButton.classList.remove("active");
+  }
+}
+
+async function initializeChat({ announceReset = false } = {}) {
+  resetChatUiState();
+
+  if (announceReset) {
+    await addMessageEntry({
+      role: "system",
+      i18nKey: "reset",
+    });
+  }
+
+  await addMessageEntry({
+    role: "bot",
+    i18nKey: "welcome",
+    actionPreset: "suggestionsCta",
+    simulateTyping: true,
   });
 }
 
@@ -328,9 +779,13 @@ function removeTypingIndicator(node) {
   }
 }
 
-async function getBackendResponse(question) {
+async function getBackendResponse(question, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const requestLanguage = options.language || state.currentLanguage;
+  const requestSessionId = Object.prototype.hasOwnProperty.call(options, "sessionId")
+    ? options.sessionId
+    : state.currentSessionId;
 
   let response;
   try {
@@ -339,8 +794,8 @@ async function getBackendResponse(question) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         question,
-        language: state.currentLanguage,
-        sessionId: state.currentSessionId,
+        language: requestLanguage,
+        sessionId: requestSessionId,
       }),
       signal: controller.signal,
     });
@@ -380,6 +835,10 @@ async function getBackendResponse(question) {
   return data;
 }
 
+function isStaleChatVersion(version) {
+  return version !== state.chatVersion;
+}
+
 async function maybeShowTopicSuggestions(question, responseData) {
   const answer = String(responseData?.answer ?? "");
   const answerNorm = answer
@@ -399,13 +858,16 @@ async function maybeShowTopicSuggestions(question, responseData) {
     answerNorm.includes("qual deles quer que eu explique");
 
   if (hasRecognitionTypeList && asksToChooseRecognitionType) {
-    await appendBotMessage(answer, {
-      actions: responseData?.actions || [
+    await addMessageEntry({
+      role: "bot",
+      originalText: answer,
+      originalLanguage: state.currentLanguage,
+      sourceQuestion: question,
+      originalActions: responseData?.actions || [
         { label: "Reconhecimento automático", value: "O que é o reconhecimento automático?" },
         { label: "Reconhecimento de nível", value: "O que é o reconhecimento de nível?" },
         { label: "Reconhecimento específico", value: "O que é o reconhecimento específico?" },
       ],
-      simulateTyping: true,
     });
     return true;
   }
@@ -413,22 +875,39 @@ async function maybeShowTopicSuggestions(question, responseData) {
   return false;
 }
 
-async function handleUserMessage(rawText) {
+async function handleUserMessage(rawText, submittedText = rawText, options = {}) {
   const text = String(rawText ?? "").trim();
+  const questionToSend = String(submittedText ?? rawText ?? "").trim();
   if (!text || state.isWaitingResponse) {
     if (!text) appendSystemMessage(translations.empty[state.currentLanguage]);
     return;
   }
 
-  appendUserMessage(text);
+  await addMessageEntry({
+    role: "user",
+    originalText: text,
+    originalLanguage: state.currentLanguage,
+    localizedTexts: options.localizedUserTexts || null,
+    meta: null,
+    metaI18nKey: null,
+    citations: [],
+    originalActions: [],
+    i18nKey: null,
+    actionPreset: null,
+  });
   input.value = "";
   autoResizeInput();
   setLoadingState(true);
   const typingIndicator = showTypingIndicator();
+  const chatVersion = state.chatVersion;
 
   try {
-    const responseData = await getBackendResponse(text);
+    const responseData = await getBackendResponse(questionToSend);
+    if (isStaleChatVersion(chatVersion)) return;
+
     await wait(getThinkingDelay(String(responseData?.answer ?? "").length));
+    if (isStaleChatVersion(chatVersion)) return;
+
     removeTypingIndicator(typingIndicator);
 
     if (await maybeShowTopicSuggestions(text, responseData)) {
@@ -436,19 +915,29 @@ async function handleUserMessage(rawText) {
     }
 
     if (responseData?.blocked) {
-      await appendBotMessage(responseData.answer || translations.blocked[state.currentLanguage], {
-        meta: null,
-        actions: [],
+      await addMessageEntry({
+        role: "bot",
+        originalText: responseData.answer || translations.blocked[state.currentLanguage],
+        originalLanguage: state.currentLanguage,
+        sourceQuestion: questionToSend,
+        localizedQuestions: options.localizedSubmitValues || null,
       });
       return;
     }
 
-    await appendBotMessage(responseData.answer || translations.error[state.currentLanguage], {
+    await addMessageEntry({
+      role: "bot",
+      originalText: responseData.answer || translations.error[state.currentLanguage],
+      originalLanguage: state.currentLanguage,
+      sourceQuestion: questionToSend,
+      localizedQuestions: options.localizedSubmitValues || null,
       citations: responseData.citations || [],
-      actions: responseData.actions || [],
+      originalActions: responseData.actions || [],
     });
   } catch (error) {
     removeTypingIndicator(typingIndicator);
+    if (isStaleChatVersion(chatVersion)) return;
+
     console.error("Erro ao obter resposta do backend:", error);
     let errorMessage = translations.error[state.currentLanguage];
     let errorMeta = null;
@@ -464,30 +953,47 @@ async function handleUserMessage(rawText) {
       errorMeta = error.status ? `HTTP ${error.status}` : "backend";
     }
 
-    await appendBotMessage(errorMessage, {
+    await addMessageEntry({
       role: "system",
+      originalText: errorMessage,
+      originalLanguage: state.currentLanguage,
       meta: errorMeta,
-      actions: quickPrompts[state.currentLanguage],
-      simulateTyping: false,
     });
+    await showQuickPrompts();
   } finally {
-    setLoadingState(false);
-    input.focus();
+    if (!isStaleChatVersion(chatVersion)) {
+      setLoadingState(false);
+      input.focus();
+    }
   }
 }
 
-function resetChat() {
-  messages.innerHTML = "";
-  state.currentSessionId = createSessionId();
-  appendSystemMessage(translations.reset[state.currentLanguage]);
-  appendBotMessage(translations.welcome[state.currentLanguage]);
+function resetChat({ announce = true } = {}) {
+  void initializeChat({ announceReset: announce });
 }
 
-function updateUiLanguage() {
+async function updateUiLanguage() {
+  document.documentElement.lang = state.currentLanguage;
   input.placeholder = translations.placeholder[state.currentLanguage];
 
   if (botWindow.classList.contains("open") && !messages.children.length) {
-    appendBotMessage(translations.welcome[state.currentLanguage]);
+    await initializeChat({ announceReset: false });
+    return;
+  }
+
+  if (!state.chatHistory.length) return;
+
+  state.chatVersion += 1;
+  setLoadingState(false);
+  document.querySelectorAll(".typing-message").forEach((node) => node.remove());
+  const chatVersion = state.chatVersion;
+
+  try {
+    await Promise.allSettled(state.chatHistory.map((entry) => ensureEntryLocalized(entry, state.currentLanguage)));
+    if (isStaleChatVersion(chatVersion)) return;
+    await renderChatHistory({ simulateTyping: false });
+  } catch (error) {
+    console.error("Erro ao traduzir histórico:", error);
   }
 }
 
@@ -519,11 +1025,11 @@ input.addEventListener("keydown", (event) => {
   }
 });
 
-resetBtn.addEventListener("click", resetChat);
+resetBtn.addEventListener("click", () => resetChat());
 
 languageSelect.addEventListener("change", (event) => {
   state.currentLanguage = event.target.value;
-  updateUiLanguage();
+  void updateUiLanguage();
 });
 
 optionsToggle.addEventListener("click", toggleAccessibilityMenu);
@@ -541,8 +1047,13 @@ botButton.addEventListener("click", () => {
   const isOpen = botWindow.classList.toggle("open");
   botButton.classList.toggle("active", isOpen);
 
+  if (!isOpen) {
+    resetChatUiState({ closeWindow: true });
+    return;
+  }
+
   if (isOpen && !messages.children.length) {
-    appendBotMessage(translations.welcome[state.currentLanguage]);
+    void initializeChat({ announceReset: false });
   }
 
   if (isOpen) {
@@ -551,5 +1062,13 @@ botButton.addEventListener("click", () => {
 });
 
 applyFontScale();
-updateUiLanguage();
+resetChatUiState({ closeWindow: true });
+void updateUiLanguage();
 autoResizeInput();
+
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    resetChatUiState({ closeWindow: true });
+    void updateUiLanguage();
+  }
+});
