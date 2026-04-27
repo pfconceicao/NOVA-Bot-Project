@@ -75,8 +75,9 @@ const RECOGNITION_I18N = {
       degrees: "Applicable degrees",
     },
     general: {
+      academicRecognitionDefinition: "In Portugal, the recognition of academic degrees and higher education diplomas awarded by foreign higher education institutions has been governed since 1 January 2019 by [Decree-Law no. 66/2018 of 16 August]({{legalDecreeUrl}}).",
       valuesOverview: "Fees by recognition type:\n• Automatic recognition: 50€ without final grade conversion, or 75€ with conversion to the Portuguese scale.\n• Level recognition: without conversion, 268€ (EU) and 650€ (non-EU); with conversion, 298€ (Bachelor or Master obtained in the EU) and 680€ (degrees obtained outside the EU).\n• Specific recognition: 298€ (EU), 680€ (non-EU) and 1,500€ in Medicine.\n• Separate final grade conversion request: 75€.\n• Grade attribution under previous legislation: 275€.\n\nFee table: {{emolumentsUrl}}.",
-      overview: "Recognition in Portugal of higher education degrees and diplomas awarded by foreign higher education institutions has been regulated since 1 January 2019 by Decree-Law no. 66/2018: {{legalDecreeUrl}}. There are three types of recognition for foreign degrees and diplomas:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nIf you want, I can explain any of them.",
+      overview: "Recognition in Portugal of higher education degrees and diplomas awarded by foreign higher education institutions has been regulated since 1 January 2019 by [Decree-Law no. 66/2018]({{legalDecreeUrl}}). There are three types of recognition for foreign degrees and diplomas:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nIf you want, I can explain any of them.",
       explainPrompt: "I can explain any of the three types of recognition:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nWhich one would you like me to explain?",
       clarifyTypePrompt: "There are three types of recognition for foreign degrees and diplomas:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nI can clarify any of them.\n\nWhich one do you want to know about?",
       clarifyValuesTypePrompt: "Which type of recognition do you want the fees for?\n\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nI can provide the fees for any of them.",
@@ -774,6 +775,68 @@ function localNormalizeEnglishQuestion(question, language = "pt") {
   if (language !== "en") return null;
 
   const q = stripDiacriticsLower(question).trim();
+  const qPlain = q.replace(/[?!.,:;]+$/g, "").trim();
+
+  if (
+    qPlain === "recognition" ||
+    qPlain === "academic recognition"
+  ) {
+    return "reconhecimento";
+  }
+
+  if (qPlain === "what is academic recognition") {
+    return "o que é o reconhecimento académico?";
+  }
+
+  if (
+    qPlain === "which types of recognition exist" ||
+    qPlain === "what types of recognition exist"
+  ) {
+    return "que tipos de reconhecimento existem?";
+  }
+
+  if (
+    qPlain === "automatic recognition" ||
+    qPlain === "what is automatic recognition"
+  ) {
+    return "reconhecimento automático";
+  }
+
+  if (
+    qPlain === "level recognition" ||
+    qPlain === "what is level recognition"
+  ) {
+    return "reconhecimento de nível";
+  }
+
+  if (
+    qPlain === "specific recognition" ||
+    qPlain === "what is specific recognition"
+  ) {
+    return "reconhecimento específico";
+  }
+
+  if (
+    qPlain === "equality" ||
+    qPlain === "inclusion" ||
+    qPlain === "equality and inclusion" ||
+    q === "equality at nova" ||
+    q === "inclusion at nova"
+  ) {
+    return "igualdade e inclusão";
+  }
+
+  if (q === "inclusive language") {
+    return "linguagem inclusiva";
+  }
+
+  if (q === "harassment and discrimination" || q === "prevention of harassment and discrimination") {
+    return "assédio e discriminação";
+  }
+
+  if (q === "special educational needs") {
+    return "necessidades educativas especiais";
+  }
 
   if (
     q === "housing" ||
@@ -788,7 +851,25 @@ function localNormalizeEnglishQuestion(question, language = "pt") {
     return "alojamento";
   }
 
-  if (q.includes("accommodation office") || q.includes("housing office")) {
+  if (
+    q.includes("contacts of the accommodation office") ||
+    q.includes("contacts for the accommodation office") ||
+    q.includes("contact of the accommodation office") ||
+    q.includes("contacts of the accomodation office") ||
+    q.includes("contacts for the accomodation office") ||
+    q.includes("contact of the accomodation office") ||
+    q.includes("contacts of the housing office") ||
+    q.includes("contacts for the housing office") ||
+    q.includes("contact of the housing office")
+  ) {
+    return "contactos do gabinete de alojamento";
+  }
+
+  if (
+    q.includes("accommodation office") ||
+    q.includes("accomodation office") ||
+    q.includes("housing office")
+  ) {
     return "gabinete de alojamento";
   }
 
@@ -922,6 +1003,9 @@ function detectRecognitionSubtypeShorthand(text) {
   if (/^(?:e\s+)?(?:(?:do|de|o)\s+)?automatico$/.test(t)) return "automatico";
   if (/^(?:e\s+)?(?:(?:de|do|o)\s+)?nivel$/.test(t)) return "nivel";
   if (/^(?:e\s+)?(?:(?:do|de|o)\s+)?especifico$/.test(t)) return "especifico";
+  if (/^(?:and\s+)?(?:the\s+)?automatic(?:\s+(?:one|type|recognition))?$/.test(t)) return "automatico";
+  if (/^(?:and\s+)?(?:the\s+)?level(?:\s+(?:one|type|recognition))?$/.test(t)) return "nivel";
+  if (/^(?:and\s+)?(?:the\s+)?specific(?:\s+(?:one|type|recognition))?$/.test(t)) return "especifico";
 
   return null;
 }
@@ -957,31 +1041,31 @@ function inferTopicFromQuestion(lower, previousTopic = "") {
   }
 
   // Reconhecimento automático
-  if (t.includes("reconhecimento") && t.includes("automatico"))
+  if ((t.includes("reconhecimento") || t.includes("recognition")) && (t.includes("automatico") || t.includes("automatic")))
     return "reconhecimento automático";
 
   // Reconhecimento de nível
-  if (t.includes("reconhecimento") && t.includes("nivel")) return "reconhecimento de nível";
+  if ((t.includes("reconhecimento") || t.includes("recognition")) && (t.includes("nivel") || t.includes("level"))) return "reconhecimento de nível";
 
   // Reconhecimento específico
-  if (t.includes("reconhecimento") && t.includes("especifico"))
+  if ((t.includes("reconhecimento") || t.includes("recognition")) && (t.includes("especifico") || t.includes("specific")))
     return "reconhecimento específico";
 
   // Reconhecimento académico
-  if (t.includes("reconhecimento") && (t.includes("academico") || t.includes("académico")))
+  if ((t.includes("reconhecimento") || t.includes("recognition")) && (t.includes("academico") || t.includes("académico") || t.includes("academic")))
     return "reconhecimento académico";
 
   // Reconhecimento genérico
-  if (t.includes("reconhecimento"))
+  if (t.includes("reconhecimento") || t.includes("recognition"))
     return "reconhecimento";
 
   if (hasRecognitionContext) {
     if (recognitionSubtypeShorthand === "automatico") return "reconhecimento automático";
     if (recognitionSubtypeShorthand === "nivel") return "reconhecimento de nível";
     if (recognitionSubtypeShorthand === "especifico") return "reconhecimento específico";
-    if (t.includes("automatico")) return "reconhecimento automático";
-    if (t.includes("nivel")) return "reconhecimento de nível";
-    if (t.includes("especifico")) return "reconhecimento específico";
+    if (t.includes("automatico") || t.includes("automatic")) return "reconhecimento automático";
+    if (t.includes("nivel") || t.includes("level")) return "reconhecimento de nível";
+    if (t.includes("especifico") || t.includes("specific")) return "reconhecimento específico";
   }
 
   // Alojamento
@@ -1000,25 +1084,57 @@ function detectQuestionIntent(lower) {
 
   const isTimeQuestion = hasTimeIntentTerms(q);
 
-  if (q.includes("o que e") || q.includes("definicao") || q.includes("define") || q.includes("significa")) {
+  if (
+    q.includes("o que e") ||
+    q.includes("definicao") ||
+    q.includes("define") ||
+    q.includes("significa") ||
+    q.includes("what is") ||
+    q.includes("definition") ||
+    q.includes("meaning")
+  ) {
     return "definition";
   }
 
-  if (q.includes("graus") || q.includes("aplica") || q.includes("a que graus") || q.includes("quais graus")) {
+  if (
+    q.includes("graus") ||
+    q.includes("aplica") ||
+    q.includes("a que graus") ||
+    q.includes("quais graus") ||
+    q.includes("which degrees") ||
+    q.includes("what degrees") ||
+    q.includes("covered") ||
+    q.includes("applies to")
+  ) {
     return "degrees";
   }
 
-  if (q.includes("onde") || q.includes("como solicitar") || q.includes("onde solicitar") || q.includes("formulario")) {
+  if (
+    q.includes("onde") ||
+    q.includes("como solicitar") ||
+    q.includes("onde solicitar") ||
+    q.includes("formulario") ||
+    q.includes("where") ||
+    q.includes("how to apply") ||
+    q.includes("apply") ||
+    q.includes("application form") ||
+    q.includes("form")
+  ) {
     return "where";
   }
 
   if (
     q.includes("document") ||
+    q.includes("documents") ||
     q.includes("entregar") ||
     q.includes("anexar") ||
+    q.includes("submit") ||
+    q.includes("attach") ||
     q.includes("diploma") ||
     q.includes("historico") ||
-    q.includes("programa")
+    q.includes("programa") ||
+    q.includes("syllabus") ||
+    q.includes("transcript")
   ) {
     return "documents";
   }
@@ -1045,7 +1161,14 @@ function hasTimeIntentTerms(text) {
     q.includes("duração") ||
     q.includes("dias") ||
     q.includes("semanas") ||
-    q.includes("meses")
+    q.includes("meses") ||
+    q.includes("timeline") ||
+    q.includes("how long") ||
+    q.includes("deadline") ||
+    q.includes("working days") ||
+    q.includes("days") ||
+    q.includes("weeks") ||
+    q.includes("months")
   );
 }
 
@@ -1061,8 +1184,155 @@ function hasCostIntentTerms(text) {
     q.includes("taxa") ||
     q.includes("taxas") ||
     q.includes("emolumento") ||
-    q.includes("emolumentos")
+    q.includes("emolumentos") ||
+    q.includes("cost") ||
+    q.includes("costs") ||
+    q.includes("fee") ||
+    q.includes("fees")
   );
+}
+
+function getContextualFollowUpQuestion(question, previousTopic = "") {
+  const q = stripDiacriticsLower(question).trim();
+  const topic = stripDiacriticsLower(previousTopic).trim();
+  const detectedIntent = detectQuestionIntent(q);
+
+  if (!q || !topic || q.length > 96) return null;
+
+  const asksContacts =
+    q.includes("contact") ||
+    q.includes("contacts") ||
+    q.includes("phone") ||
+    q.includes("email") ||
+    q.includes("contacto") ||
+    q.includes("contactos") ||
+    q.includes("contato") ||
+    q.includes("contatos") ||
+    q.includes("telefone");
+  const asksLocation =
+    q.includes("onde") ||
+    q.includes("where") ||
+    q.includes("address") ||
+    q.includes("location") ||
+    q.includes("where is it") ||
+    q.includes("morada") ||
+    q.includes("endereco") ||
+    q.includes("endereço") ||
+    q.includes("localizacao") ||
+    q.includes("localização");
+  const asksHours =
+    q.includes("hours") ||
+    q.includes("opening") ||
+    q.includes("open") ||
+    q.includes("schedule") ||
+    q.includes("horario") ||
+    q.includes("horários") ||
+    q.includes("horarios") ||
+    q.includes("atendimento") ||
+    q.includes("funcionamento");
+  const asksPage =
+    q.includes("page") ||
+    q.includes("website") ||
+    q.includes("site") ||
+    q.includes("link") ||
+    q.includes("url") ||
+    q.includes("pagina") ||
+    q.includes("página");
+  const asksApply =
+    q.includes("how do i apply") ||
+    q.includes("how to apply") ||
+    q.includes("apply") ||
+    q.includes("application") ||
+    q.includes("candidatura") ||
+    q.includes("candidatar") ||
+    q.includes("candidaturas");
+  const asksDocuments =
+    q.includes("document") ||
+    q.includes("documents") ||
+    q.includes("submit") ||
+    q.includes("attach") ||
+    q.includes("anexar") ||
+    q.includes("entregar") ||
+    q.includes("diploma") ||
+    q.includes("historico") ||
+    q.includes("histórico") ||
+    q.includes("programa");
+  const asksCost =
+    detectedIntent === "cost" ||
+    (!detectedIntent && hasCostIntentTerms(q)) ||
+    q.includes("how much") ||
+    q.includes("cost") ||
+    q.includes("fees") ||
+    q.includes("fee");
+  const asksTime =
+    detectedIntent === "time" ||
+    (!detectedIntent && hasTimeIntentTerms(q)) ||
+    q.includes("how long") ||
+    q.includes("timeline") ||
+    q.includes("deadline") ||
+    q.includes("when") ||
+    q.includes("how many days") ||
+    q.includes("how many weeks") ||
+    q.includes("how many months");
+  const asksDegrees =
+    q.includes("which degrees") ||
+    q.includes("what degrees") ||
+    q.includes("covered by") ||
+    q.includes("applies to") ||
+    q.includes("graus") ||
+    q.includes("aplica");
+  const asksDefinition =
+    q.includes("what is") ||
+    q.includes("tell me more") ||
+    q.includes("explain") ||
+    q.includes("more about") ||
+    q.includes("o que e") ||
+    q.includes("o que é") ||
+    q.includes("explica");
+
+  let recognitionTopicForFollowUp = previousTopic;
+  if (topic.includes("reconhecimento")) {
+    if (q.includes("automatico") || q.includes("automatic")) {
+      recognitionTopicForFollowUp = "reconhecimento automático";
+    } else if (q.includes("nivel") || q.includes("level")) {
+      recognitionTopicForFollowUp = "reconhecimento de nível";
+    } else if (q.includes("especifico") || q.includes("specific")) {
+      recognitionTopicForFollowUp = "reconhecimento específico";
+    }
+  }
+
+  if (topic.includes("alojamento")) {
+    if (asksContacts || asksPage) return "contactos do gabinete de alojamento";
+    if (asksLocation) return "morada do gabinete de alojamento";
+    if (asksHours) return "horario do gabinete de alojamento";
+  }
+
+  if (topic.includes("igualdade") || topic.includes("inclusao")) {
+    if (asksContacts) return "contactos do gabinete de igualdade e inclusao";
+    if (asksLocation) return "onde fica o gabinete de igualdade e inclusao";
+    if (asksHours) return "horario do gabinete de igualdade e inclusao";
+    if (asksPage || asksDefinition) return "igualdade e inclusao";
+  }
+
+  if (topic.includes("reconhecimento")) {
+    if (asksDefinition) return buildIntentCarryQuestion("definition", recognitionTopicForFollowUp) || "o que e reconhecimento";
+    if (asksDegrees) return buildIntentCarryQuestion("degrees", recognitionTopicForFollowUp) || "a que graus se aplica reconhecimento";
+    if (asksApply) return buildIntentCarryQuestion("where", recognitionTopicForFollowUp) || `onde solicitar ${recognitionTopicForFollowUp}`;
+    if (asksDocuments) return buildIntentCarryQuestion("documents", recognitionTopicForFollowUp) || `que documentos entregar para ${recognitionTopicForFollowUp}`;
+    if (asksCost) return buildIntentCarryQuestion("cost", recognitionTopicForFollowUp) || `quanto custa ${recognitionTopicForFollowUp}`;
+    if (asksTime) return buildIntentCarryQuestion("time", recognitionTopicForFollowUp) || `qual e o prazo para ${recognitionTopicForFollowUp}`;
+    if (asksContacts) return "contactos reconhecimento";
+    if (asksLocation) return "onde fica a uaa";
+    if (asksHours) return "horario da uaa";
+  }
+
+  if (topic.includes("servicos academicos") || topic.includes("serviços académicos")) {
+    if (asksContacts) return "contactos dos servicos academicos";
+    if (asksLocation) return "onde ficam os servicos academicos";
+    if (asksHours) return "horario dos servicos academicos";
+  }
+
+  return null;
 }
 
 function detectEqualityTopicKey(lower, topicHint = "") {
@@ -2546,6 +2816,9 @@ function housingLocationFallbackIfNeeded(lower, topicHint = "", language = "pt")
     qNorm.includes("há gabinete");
 
   const asksPhoneOrContact =
+    qNorm.includes("phone") ||
+    qNorm.includes("contact") ||
+    qNorm.includes("contacts") ||
     qNorm.includes("telefone") ||
     qNorm.includes("telemovel") ||
     qNorm.includes("contacto") ||
@@ -2556,6 +2829,9 @@ function housingLocationFallbackIfNeeded(lower, topicHint = "", language = "pt")
     qNorm.includes("e-mail");
 
   const asksAddressOrLocation =
+    qNorm.includes("where") ||
+    qNorm.includes("address") ||
+    qNorm.includes("location") ||
     qNorm.includes("onde") ||
     qNorm.includes("morada") ||
     qNorm.includes("endereco") ||
@@ -2861,169 +3137,6 @@ async function callOllamaText(prompt, { timeoutMs = 60_000, optionsOverride } = 
   }
 }
 
-async function translateQuestionToPortuguese(question) {
-  const prompt = `
-Traduz a pergunta seguinte para português europeu.
-- Mantém o significado exato.
-- Mantém nomes próprios, siglas, URLs e números.
-- Devolve apenas a tradução, sem explicações.
-
-Pergunta:
-${question}
-`.trim();
-
-  return callOllamaText(prompt, {
-    timeoutMs: 45_000,
-    optionsOverride: { num_predict: 160 },
-  });
-}
-
-async function translateTextToPortuguese(text) {
-  const prompt = `
-Traduz o texto seguinte para português europeu claro.
-- Mantém o significado exato.
-- Mantém URLs, endereços de email, números, contactos e estrutura em listas.
-- Devolve apenas a tradução.
-
-Texto:
-${text}
-`.trim();
-
-  return callOllamaText(prompt, {
-    timeoutMs: 45_000,
-    optionsOverride: { num_predict: 260 },
-  });
-}
-
-async function translateTextToEnglish(text) {
-  const prompt = `
-Translate the following text into clear English.
-- Preserve meaning exactly.
-- Preserve URLs, email addresses, phone numbers, numbers and bullet structure.
-- Return only the translated text.
-
-Text:
-${text}
-`.trim();
-
-  return callOllamaText(prompt, {
-    timeoutMs: 45_000,
-    optionsOverride: { num_predict: 260 },
-  });
-}
-
-async function localizeActions(actions = [], language = "pt") {
-  if (language !== "en" || !Array.isArray(actions) || actions.length === 0) return actions;
-
-  const localizedActions = [];
-  for (const actionItem of actions) {
-    const rawLabel = typeof actionItem === "string"
-      ? actionItem
-      : String(actionItem?.label ?? actionItem?.value ?? "");
-    const rawValue = typeof actionItem === "string"
-      ? actionItem
-      : String(actionItem?.value ?? actionItem?.label ?? "");
-
-    if (!rawLabel || !rawValue) continue;
-
-    const mapped = ACTION_TRANSLATIONS_EN.get(rawLabel);
-    let translatedLabel = mapped?.label || rawLabel;
-    let userText = mapped?.userText || translatedLabel;
-
-    if (!mapped) {
-      const normalizedValue = stripDiacriticsLower(rawValue);
-      if (normalizedValue === "o que e o reconhecimento automatico?" || normalizedValue === "reconhecimento automatico") {
-        translatedLabel = "Automatic recognition";
-        userText = "What is automatic recognition?";
-      } else if (normalizedValue === "o que e o reconhecimento de nivel?" || normalizedValue === "reconhecimento de nivel") {
-        translatedLabel = "Level recognition";
-        userText = "What is level recognition?";
-      } else if (normalizedValue === "o que e o reconhecimento especifico?" || normalizedValue === "reconhecimento especifico") {
-        translatedLabel = "Specific recognition";
-        userText = "What is specific recognition?";
-      } else if (normalizedValue.includes("quanto custa o reconhecimento automatico")) {
-        translatedLabel = "Automatic recognition fees";
-        userText = "How much does automatic recognition cost?";
-      } else if (normalizedValue.includes("quanto custa o reconhecimento de nivel")) {
-        translatedLabel = "Level recognition fees";
-        userText = "How much does level recognition cost?";
-      } else if (normalizedValue.includes("quanto custa o reconhecimento especifico")) {
-        translatedLabel = "Specific recognition fees";
-        userText = "How much does specific recognition cost?";
-      } else if (normalizedValue.includes("que documentos entregar para o reconhecimento automatico")) {
-        translatedLabel = "Automatic recognition documents";
-        userText = "Which documents are required for automatic recognition?";
-      } else if (normalizedValue.includes("que documentos entregar para o reconhecimento de nivel")) {
-        translatedLabel = "Level recognition documents";
-        userText = "Which documents are required for level recognition?";
-      } else if (normalizedValue.includes("que documentos entregar para o reconhecimento especifico")) {
-        translatedLabel = "Specific recognition documents";
-        userText = "Which documents are required for specific recognition?";
-      } else if (normalizedValue.includes("onde solicitar o reconhecimento automatico")) {
-        translatedLabel = "Where to apply for automatic recognition";
-        userText = "Where can I apply for automatic recognition?";
-      } else if (normalizedValue.includes("onde solicitar o reconhecimento de nivel")) {
-        translatedLabel = "Where to apply for level recognition";
-        userText = "Where can I apply for level recognition?";
-      } else if (normalizedValue.includes("onde solicitar o reconhecimento especifico")) {
-        translatedLabel = "Where to apply for specific recognition";
-        userText = "Where can I apply for specific recognition?";
-      } else if (normalizedValue.includes("qual e o prazo para o reconhecimento automatico")) {
-        translatedLabel = "Automatic recognition timeline";
-        userText = "What is the timeline for automatic recognition?";
-      } else if (normalizedValue.includes("qual e o prazo para o reconhecimento de nivel")) {
-        translatedLabel = "Level recognition timeline";
-        userText = "What is the timeline for level recognition?";
-      } else if (normalizedValue.includes("qual e o prazo para o reconhecimento especifico")) {
-        translatedLabel = "Specific recognition timeline";
-        userText = "What is the timeline for specific recognition?";
-      } else if (normalizedValue.includes("a que graus estrangeiros se aplica o reconhecimento automatico")) {
-        translatedLabel = "Applicable degrees for automatic recognition";
-        userText = "Which degrees are covered by automatic recognition?";
-      } else if (normalizedValue.includes("a que graus estrangeiros se aplica o reconhecimento de nivel")) {
-        translatedLabel = "Applicable degrees for level recognition";
-        userText = "Which degrees are covered by level recognition?";
-      } else if (normalizedValue.includes("a que graus estrangeiros se aplica o reconhecimento especifico")) {
-        translatedLabel = "Applicable degrees for specific recognition";
-        userText = "Which degrees are covered by specific recognition?";
-      }
-    }
-
-    localizedActions.push({
-      label: translatedLabel,
-      value: userText,
-      userText,
-      submitValue: rawValue,
-    });
-  }
-
-  return localizedActions;
-}
-
-async function localizeResponsePayload(payload, language = "pt") {
-  if (language !== "en" || !payload || typeof payload !== "object") return payload;
-
-  const localizedPayload = { ...payload };
-
-  if (typeof localizedPayload.answer === "string" && localizedPayload.answer.trim()) {
-    try {
-      localizedPayload.answer = await translateTextToEnglish(localizedPayload.answer);
-    } catch {
-      localizedPayload.answer = payload.answer;
-    }
-  }
-
-  if (Array.isArray(localizedPayload.actions) && localizedPayload.actions.length > 0) {
-    try {
-      localizedPayload.actions = await localizeActions(localizedPayload.actions, language);
-    } catch {
-      localizedPayload.actions = payload.actions;
-    }
-  }
-
-  return localizedPayload;
-}
-
 // ───────── fallback específico para localização ─────────
 function locationFallbackIfNeeded(lower, scored, topicHint = "", variantScope = "", language = "pt") {
   console.log("📍 locationFallbackIfNeeded ANALISANDO:", lower);
@@ -3271,9 +3384,9 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     q.includes("anexar") ||
     q.includes("diploma");
 
-  const isCostQuestion = hasCostIntentTerms(q);
-
   const isTimeQuestion = hasTimeIntentTerms(q);
+
+  const isCostQuestion = !isTimeQuestion && hasCostIntentTerms(q);
 
   if (isDefinitionQuestion) {
     return {
@@ -3577,29 +3690,6 @@ async function bootstrap() {
   const embedderPromise = pipeline("feature-extraction", modelPath, { pooling: "mean", normalize: true, });
   await checkOllamaModelAvailability();
 
-  app.post("/translate", async (req, res) => {
-    try {
-      const rawText = typeof req.body?.text === "string" ? req.body.text.trim() : "";
-      const sourceLanguage = normalizeLanguage(req.body?.sourceLanguage);
-      const targetLanguage = normalizeLanguage(req.body?.targetLanguage);
-
-      if (!rawText) return res.status(400).json({ error: "Text is required" });
-      if (sourceLanguage === targetLanguage) return res.json({ text: rawText });
-
-      let translatedText = rawText;
-      if (sourceLanguage === "pt" && targetLanguage === "en") {
-        translatedText = await translateTextToEnglish(rawText);
-      } else if (sourceLanguage === "en" && targetLanguage === "pt") {
-        translatedText = await translateTextToPortuguese(rawText);
-      }
-
-      return res.json({ text: translatedText || rawText });
-    } catch (error) {
-      console.log("⚠️ Falha na tradução direta:", String(error?.message ?? error));
-      return res.status(500).json({ error: "Translation failed" });
-    }
-  });
-
   app.post("/ask", async (req, res) => {
   try {
     const questionRaw = req.body?.question;
@@ -3610,34 +3700,11 @@ async function bootstrap() {
     const originalQuestion = typeof questionRaw === "string" ? questionRaw.trim() : "";
     if (!originalQuestion) return res.status(400).json({ error: "Question is required" });
 
-    const originalJson = res.json.bind(res);
-    res.json = (payload) => {
-      if (responseLanguage !== "en") return originalJson(payload);
-      if (payload?.__localized) {
-        const cleanPayload = { ...payload };
-        delete cleanPayload.__localized;
-        return originalJson(cleanPayload);
-      }
-
-      Promise.resolve(localizeResponsePayload(payload, responseLanguage))
-        .then((localizedPayload) => originalJson(localizedPayload))
-        .catch(() => originalJson(payload));
-
-      return res;
-    };
-
     let question = originalQuestion;
     if (responseLanguage === "en") {
       const locallyNormalizedQuestion = localNormalizeEnglishQuestion(originalQuestion, responseLanguage);
       if (locallyNormalizedQuestion) {
         question = locallyNormalizedQuestion;
-      } else {
-      try {
-        const translatedQuestion = await translateQuestionToPortuguese(originalQuestion);
-        if (translatedQuestion) question = translatedQuestion;
-      } catch (error) {
-        console.log("⚠️ Falha a traduzir pergunta EN para PT:", String(error?.message ?? error));
-      }
       }
     }
 
@@ -3645,7 +3712,7 @@ async function bootstrap() {
     if (question !== originalQuestion) {
       console.log("🌐 Pergunta normalizada para PT:", question);
     }
-    const lower = question.toLowerCase();
+    let lower = question.toLowerCase();
 
    
     // Verificar se é uma pergunta de continuação
@@ -3709,6 +3776,14 @@ const hasLocationTerms =
   qTrim.includes("serviços académicos") ||
   qTrim.includes("servicos academicos") ||
   qTrim.includes("uaa");
+
+const contextualFollowUpQuestion = hasQualifiedSessionTopic
+  ? getContextualFollowUpQuestion(qTrim, previousTopicRaw)
+  : null;
+
+const isGenericOfficeContactFollowUp =
+  hasQualifiedSessionTopic &&
+  Boolean(contextualFollowUpQuestion);
 
 // Perguntas curtas de custo sem tópico explícito devem herdar contexto da sessão.
 const isGenericCostQuestion =
@@ -3778,20 +3853,21 @@ const hasShortContextualFollowUpSignal =
 const isFollowUp =
   !isExplicitTopicSwitch &&
   (FOLLOWUP_PATTERNS.some((re) => re.test(qTrim)) ||
-   (hasQualifiedSessionTopic && qTrim.length <= 48 && hasShortContextualFollowUpSignal)) &&
+   (hasQualifiedSessionTopic && qTrim.length <= 48 && hasShortContextualFollowUpSignal) ||
+   isGenericOfficeContactFollowUp) &&
   !hasDocTerms &&
-  !hasLocationTerms &&
+  !(hasLocationTerms && !isGenericOfficeContactFollowUp) &&
   !(hasCostTerms && !(hasQualifiedSessionTopic && isGenericCostQuestion));
 
 // usar tópico anterior quando é follow-up
 let enhancedQuestion = question;
-if (isFollowUp && hasQualifiedSessionTopic) {
+if (!contextualFollowUpQuestion && isFollowUp && hasQualifiedSessionTopic) {
   const previousTopic = sessionContext.get(sessionId);
   enhancedQuestion = `${previousTopic}. ${question}`;
   console.log(`🔄 Usando tópico anterior para follow-up: ${previousTopic}`);
 }
 
-let routedQuestion = enhancedQuestion;
+let routedQuestion = contextualFollowUpQuestion || enhancedQuestion;
 let effectiveIntent = currentIntent;
 const activeSessionTopic = trackSession ? (sessionContext.get(sessionId) || "") : "";
 const inferredTopicIsGenericLocation = inferredTopicNorm.includes("localizacao");
@@ -3799,6 +3875,10 @@ const activeTopicForIntent =
   inferredTopic && !inferredTopicIsGenericLocation
     ? inferredTopic
     : activeSessionTopic;
+
+if (contextualFollowUpQuestion) {
+  console.log(`🧭 Follow-up contextual normalizado: ${contextualFollowUpQuestion}`);
+}
 
 if (canCarryIntentAcrossTopicSwitch) {
   const carryQuestion = buildIntentCarryQuestion(previousIntent, inferredTopic);
@@ -3828,6 +3908,13 @@ if (canCarryIntentAcrossTopicSwitch) {
   routedQuestion = normalizedQuestion;
   effectiveIntent = recognitionSubtypeOnlyIntent;
   console.log(`🧭 Subtipo de reconhecimento normalizado: ${normalizedQuestion}`);
+}
+
+question = routedQuestion;
+lower = question.toLowerCase();
+
+if (!effectiveIntent) {
+  effectiveIntent = detectQuestionIntent(lower);
 }
 
 // atualizar contexto da sessão
@@ -4074,6 +4161,13 @@ const asksGeneralRecognitionOverview =
     qNormRecon.includes("como funciona o reconhecimento de graus") ||
     qNormRecon.includes("o que e o reconhecimento em portugal"));
 
+const asksAcademicRecognitionDefinition =
+  mentionsReconhecimento &&
+  !mentionsType &&
+  (qNormRecon.includes("o que e o reconhecimento academico") ||
+    qNormRecon.includes("o que e reconhecimento academico") ||
+    qNormRecon.includes("what is academic recognition"));
+
 const asksGenericRecognitionExplanationFollowUp =
   pendingState === "generic_recognition_explain" &&
   !mentionsType &&
@@ -4118,6 +4212,25 @@ if (asksGeneralRecognitionOverview) {
     __localized: responseLanguage === "en",
     citations: [],
   }, { pendingState: "generic_recognition_explain", debugLabel: "deterministic:recognition:overview" });
+}
+
+if (
+  normalizedPrompt === "o que e o reconhecimento academico" ||
+  normalizedPrompt === "o que e reconhecimento academico"
+) {
+  return sendJson(200, {
+    answer: getRecognitionGeneralText("academicRecognitionDefinition", responseVariantScope, responseLanguage),
+    __localized: responseLanguage === "en",
+    citations: [],
+  }, { debugLabel: "deterministic:recognition:academic_definition_pt" });
+}
+
+if (asksAcademicRecognitionDefinition) {
+  return sendJson(200, {
+    answer: getRecognitionGeneralText("academicRecognitionDefinition", responseVariantScope, responseLanguage),
+    __localized: responseLanguage === "en",
+    citations: [],
+  }, { debugLabel: "deterministic:recognition:academic_definition" });
 }
 
 if (asksGenericRecognitionExplanationFollowUp) {
