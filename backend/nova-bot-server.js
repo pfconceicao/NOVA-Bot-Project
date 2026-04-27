@@ -75,7 +75,10 @@ const RECOGNITION_I18N = {
       degrees: "Applicable degrees",
     },
     general: {
-      academicRecognitionDefinition: "In Portugal, the recognition of academic degrees and higher education diplomas awarded by foreign higher education institutions has been governed since 1 January 2019 by [Decree-Law no. 66/2018 of 16 August]({{legalDecreeUrl}}).",
+      academicRecognitionDefinition: [
+        "In Portugal, the recognition of academic degrees and higher education diplomas awarded by foreign higher education institutions has been governed since 1 January 2019 by [Decree-Law no. 66/2018 of 16 August]({{legalDecreeUrl}}).",
+        "Academic recognition is the process through which Portugal assesses a higher education degree or diploma obtained abroad to determine how it fits into the Portuguese higher education system. Depending on the case, it may confirm the general level of the qualification or recognise correspondence with a Portuguese degree. This framework is governed by [Decree-Law no. 66/2018 of 16 August]({{legalDecreeUrl}}) and is organised into three types:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nIf you would like me to explain one of them, just choose one of the options below."
+      ],
       valuesOverview: "Fees by recognition type:\n• Automatic recognition: 50€ without final grade conversion, or 75€ with conversion to the Portuguese scale.\n• Level recognition: without conversion, 268€ (EU) and 650€ (non-EU); with conversion, 298€ (Bachelor or Master obtained in the EU) and 680€ (degrees obtained outside the EU).\n• Specific recognition: 298€ (EU), 680€ (non-EU) and 1,500€ in Medicine.\n• Separate final grade conversion request: 75€.\n• Grade attribution under previous legislation: 275€.\n\nFee table: {{emolumentsUrl}}.",
       overview: "Recognition in Portugal of higher education degrees and diplomas awarded by foreign higher education institutions has been regulated since 1 January 2019 by [Decree-Law no. 66/2018]({{legalDecreeUrl}}). There are three types of recognition for foreign degrees and diplomas:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nIf you want, I can explain any of them.",
       explainPrompt: "I can explain any of the three types of recognition:\n• Automatic recognition\n• Level recognition\n• Specific recognition\n\nWhich one would you like me to explain?",
@@ -103,7 +106,10 @@ const RECOGNITION_I18N = {
     },
     types: {
       automatico: {
-        definition: "Automatic recognition is the act that allows the generic recognition of a foreign higher education degree or diploma whose level, objectives and nature are identical to the Portuguese degrees of bachelor, master and doctor, or to the short-cycle higher technical diploma, provided it appears on the list approved by the Recognition Commission for Foreign Degrees and Diplomas.",
+        definition: [
+          "Automatic recognition is the generic recognition of a foreign higher education degree or diploma whose level, objectives and nature match a Portuguese bachelor's, master's or doctoral degree, or a short-cycle higher technical diploma, provided it appears on the official list approved by the Recognition Commission for Foreign Degrees and Diplomas.",
+          "Automatic recognition allows the generic recognition of a foreign higher education degree or diploma whose level, objectives and nature correspond to a Portuguese bachelor's, master's or doctoral degree, or to a short-cycle higher technical diploma. It applies when the foreign qualification appears on the official list approved by the Recognition Commission for Foreign Degrees and Diplomas."
+        ],
         degrees: "It applies to degrees and diplomas covered by the official DGES list. You can check it here: {{recognitionFormUrl}} and consult the table here: {{recognitionDegreesUrl}}.",
         where: "For automatic recognition, the application is submitted through the DGES online form: {{recognitionFormUrl}}.",
         documents: "You must attach to the online form: (1) a copy of the diploma; (2) a document with the final grade awarded, the grading scale used and the minimum passing grade. This second document applies when you request conversion of the final grade to the Portuguese scale.",
@@ -111,7 +117,10 @@ const RECOGNITION_I18N = {
         time: "The timeline is 30 days after the file has been fully submitted and payment has been completed.",
       },
       nivel: {
-        definition: "Level recognition is the act that allows the individual recognition, by comparability, of a foreign higher education degree or diploma as corresponding in level to a Portuguese higher education degree or diploma.",
+        definition: [
+          "Level recognition is the individual recognition, by comparability, of a foreign higher education degree or diploma as corresponding in level to a Portuguese higher education degree or diploma.",
+          "Level recognition allows the individual recognition, by comparability, of a foreign higher education degree or diploma as corresponding in level to a Portuguese higher education degree or diploma. It establishes the academic level of the qualification rather than equivalence to a specific study programme."
+        ],
         degrees: "It applies to foreign higher education degrees or diplomas whose level is to be recognised by comparability with a Portuguese higher education degree or diploma.",
         where: "For level recognition, the application is submitted through the DGES online form: {{recognitionFormUrl}}.",
         documents: "You must attach to the online form: copy of the diploma, academic transcript, syllabus of the subjects studied, a declaration from the university stating the final grade, grading scale and minimum passing grade if grade conversion is requested, and the final project in PDF format when applicable.",
@@ -119,7 +128,10 @@ const RECOGNITION_I18N = {
         time: "The timeline is 90 working days after the file has been fully submitted and payment has been completed.",
       },
       especifico: {
-        definition: "Specific recognition is the act that allows a foreign higher education degree or diploma to be recognised as identical to a Portuguese higher education degree or diploma, through a case-by-case analysis of level, duration and syllabus, within a specific field of study, branch of knowledge or specialisation.",
+        definition: [
+          "Specific recognition is the recognition of a foreign higher education degree or diploma as identical to a Portuguese higher education degree or diploma, based on a case-by-case analysis of level, duration and syllabus within a specific field of study, branch of knowledge or specialisation.",
+          "Specific recognition allows a foreign higher education degree or diploma to be recognised as identical to a Portuguese higher education degree or diploma through a case-by-case analysis of level, duration and syllabus. It is assessed within a specific field of study, branch of knowledge or specialisation."
+        ],
         degrees: "It applies to foreign higher education degrees or diplomas that are intended to be recognised as identical to a Portuguese higher education degree or diploma in a specific field of study, branch of knowledge or specialisation.",
         where: "For specific recognition, the application is submitted through the DGES online form: {{recognitionFormUrl}}.",
         documents: "You must attach to the online form a copy of the diploma, academic transcript, syllabus of the subjects studied and the final project in PDF format when applicable.",
@@ -307,6 +319,113 @@ function pickVariantText(value, variantScope = "", variantKey = "") {
   return normalized[variantHash % normalized.length];
 }
 
+function pickPreferredVariantText(value, preference = "", variantScope = "", variantKey = "") {
+  const variants = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray(value.variants)
+      ? value.variants
+      : [value];
+
+  const normalized = variants
+    .map((entry) => String(entry ?? "").trim())
+    .filter(Boolean);
+
+  if (normalized.length === 0) return "";
+  if (normalized.length === 1) return normalized[0];
+  if (preference === "concise") return normalized[0];
+  if (preference === "detailed") return normalized[Math.min(1, normalized.length - 1)];
+
+  return pickVariantText(normalized, variantScope, variantKey);
+}
+
+function inferResponseDetailLevel(lower) {
+  const q = stripDiacriticsLower(lower).trim();
+
+  if (!q) return "";
+
+  if (
+    q.includes("explica") ||
+    q.includes("explain") ||
+    q.includes("detalha") ||
+    q.includes("detail") ||
+    q.includes("mais detalhe") ||
+    q.includes("mais detalh") ||
+    q.includes("aprofunda") ||
+    q.includes("go deeper") ||
+    q.includes("tell me more") ||
+    q.includes("how does") ||
+    q.includes("como funciona")
+  ) {
+    return "detailed";
+  }
+
+  if (
+    q.includes("o que e") ||
+    q.includes("what is") ||
+    q.includes("definicao") ||
+    q.includes("definition") ||
+    q.includes("define") ||
+    q.includes("significa")
+  ) {
+    return "concise";
+  }
+
+  return "";
+}
+
+function isShortAffirmativeFollowUpPrompt(value) {
+  const q = stripDiacriticsLower(value).replace(/[?!.,:;]+/g, " ").replace(/\s+/g, " ").trim();
+
+  if (!q) return false;
+
+  return [
+    "sim",
+    "sim sim",
+    "yes",
+    "yes yes",
+    "ok",
+    "okay",
+    "okey",
+    "claro",
+    "forca",
+    "forca nisso",
+    "forca entao",
+    "segue",
+    "continua",
+    "continue",
+    "go on",
+  ].includes(q);
+}
+
+function isRecognitionExplainContinuationPrompt(value) {
+  const q = stripDiacriticsLower(value).replace(/[?!.,:;]+/g, " ").replace(/\s+/g, " ").trim();
+
+  if (!q) return false;
+
+  if (isShortAffirmativeFollowUpPrompt(q)) return true;
+
+  return [
+    "explica",
+    "explica entao",
+    "entao explica",
+    "sim explica",
+    "sim explica-me",
+    "sim explica me",
+    "podes explicar",
+    "pode explicar",
+    "explain",
+    "explain then",
+    "yes explain",
+    "please explain",
+    "can you explain",
+    "explain better",
+    "tell me more",
+    "tell me more about it",
+    "go on",
+    "continue explaining",
+  ].includes(q);
+}
+
 function getRecognitionTemplateContext(extra = {}) {
   return {
     ...RECOGNITION_LINKS,
@@ -328,16 +447,16 @@ function getRecognitionContactContext(contactKey, extra = {}, language = "pt") {
   return getRecognitionTemplateContext({ ...contact, ...extra });
 }
 
-function getRecognitionGeneralText(key, variantScope = "", language = "pt") {
+function getRecognitionGeneralText(key, variantScope = "", language = "pt", detailLevel = "") {
   if (language === "en") {
     return interpolateTemplate(
-      RECOGNITION_I18N.en.general?.[key] ?? "",
+      pickPreferredVariantText(RECOGNITION_I18N.en.general?.[key] ?? "", detailLevel, variantScope, `en:general:${key}`),
       getRecognitionTemplateContext()
     );
   }
 
   return interpolateTemplate(
-    pickVariantText(RECOGNITION_CONTENT?.general?.[key] ?? "", variantScope, `general:${key}`),
+    pickPreferredVariantText(RECOGNITION_CONTENT?.general?.[key] ?? "", detailLevel, variantScope, `general:${key}`),
     getRecognitionTemplateContext()
   );
 }
@@ -415,6 +534,10 @@ function buildIntentCarryQuestionEnglish(intent, topic) {
   }
 }
 
+function toCanonicalSubmitPrompt(prompt) {
+  return stripDiacriticsLower(prompt).replace(/[?!.]+$/g, "").trim();
+}
+
 function getRecognitionTypeActions(mode = "definition", language = "pt") {
   const intent = mode === "cost" ? "cost" : "definition";
   const items = ["automatico", "nivel", "especifico"]
@@ -423,7 +546,7 @@ function getRecognitionTypeActions(mode = "definition", language = "pt") {
 
   return items.map(({ key, label, topic }) => {
     const submitTopic = getRecognitionTypeMetadata(key, "pt")?.topic ?? topic;
-    const submitValue = buildIntentCarryQuestion(intent, submitTopic);
+    const submitValue = toCanonicalSubmitPrompt(buildIntentCarryQuestion(intent, submitTopic));
 
     if (language === "en") {
       return {
@@ -459,7 +582,7 @@ function getRecognitionDetailActions(typeKey, currentIntent = "", language = "pt
     .filter(({ intent }) => intent === "definition" || Boolean(RECOGNITION_CONTENT?.types?.[typeMeta.key]?.[intent]))
     .map(({ intent, label }) => {
       const submitTopic = getRecognitionTypeMetadata(typeKey, "pt")?.topic ?? typeMeta.topic;
-      const submitValue = buildIntentCarryQuestion(intent, submitTopic);
+      const submitValue = toCanonicalSubmitPrompt(buildIntentCarryQuestion(intent, submitTopic));
       const userText = language === "en"
         ? buildIntentCarryQuestionEnglish(intent, typeMeta.topic)
         : submitValue;
@@ -512,16 +635,16 @@ function withRecognitionComplementaryHelp(answer, typeKey, currentIntent = "", l
   return `${baseAnswer}${getRecognitionComplementaryHelpText(typeKey, currentIntent, language)}`;
 }
 
-function getRecognitionTypeText(typeKey, key, variantScope = "", language = "pt") {
+function getRecognitionTypeText(typeKey, key, variantScope = "", language = "pt", detailLevel = "") {
   if (language === "en") {
     return interpolateTemplate(
-      RECOGNITION_I18N.en.types?.[typeKey]?.[key] ?? "",
+      pickPreferredVariantText(RECOGNITION_I18N.en.types?.[typeKey]?.[key] ?? "", detailLevel, variantScope, `en:type:${typeKey}:${key}`),
       getRecognitionTemplateContext()
     );
   }
 
   return interpolateTemplate(
-    pickVariantText(RECOGNITION_CONTENT?.types?.[typeKey]?.[key] ?? "", variantScope, `type:${typeKey}:${key}`),
+    pickPreferredVariantText(RECOGNITION_CONTENT?.types?.[typeKey]?.[key] ?? "", detailLevel, variantScope, `type:${typeKey}:${key}`),
     getRecognitionTemplateContext()
   );
 }
@@ -789,6 +912,19 @@ function localNormalizeEnglishQuestion(question, language = "pt") {
   }
 
   if (
+    qPlain === "explain academic recognition" ||
+    qPlain === "explain better" ||
+    qPlain === "explain what is the recognition" ||
+    qPlain === "explain what recognition is" ||
+    qPlain === "explain recognition" ||
+    qPlain === "tell me about academic recognition" ||
+    qPlain === "tell me more about academic recognition" ||
+    qPlain === "how does academic recognition work"
+  ) {
+    return "explica-me o que é o reconhecimento académico";
+  }
+
+  if (
     qPlain === "which types of recognition exist" ||
     qPlain === "what types of recognition exist"
   ) {
@@ -799,21 +935,54 @@ function localNormalizeEnglishQuestion(question, language = "pt") {
     qPlain === "automatic recognition" ||
     qPlain === "what is automatic recognition"
   ) {
-    return "reconhecimento automático";
+    return qPlain === "what is automatic recognition"
+      ? "o que é o reconhecimento automático?"
+      : "reconhecimento automático";
+  }
+
+  if (
+    qPlain === "explain automatic recognition" ||
+    qPlain === "tell me about automatic recognition" ||
+    qPlain === "tell me more about automatic recognition" ||
+    qPlain === "how does automatic recognition work"
+  ) {
+    return "explica o reconhecimento automático";
   }
 
   if (
     qPlain === "level recognition" ||
     qPlain === "what is level recognition"
   ) {
-    return "reconhecimento de nível";
+    return qPlain === "what is level recognition"
+      ? "o que é o reconhecimento de nível?"
+      : "reconhecimento de nível";
+  }
+
+  if (
+    qPlain === "explain level recognition" ||
+    qPlain === "tell me about level recognition" ||
+    qPlain === "tell me more about level recognition" ||
+    qPlain === "how does level recognition work"
+  ) {
+    return "explica o reconhecimento de nível";
   }
 
   if (
     qPlain === "specific recognition" ||
     qPlain === "what is specific recognition"
   ) {
-    return "reconhecimento específico";
+    return qPlain === "what is specific recognition"
+      ? "o que é o reconhecimento específico?"
+      : "reconhecimento específico";
+  }
+
+  if (
+    qPlain === "explain specific recognition" ||
+    qPlain === "tell me about specific recognition" ||
+    qPlain === "tell me more about specific recognition" ||
+    qPlain === "how does specific recognition work"
+  ) {
+    return "explica o reconhecimento específico";
   }
 
   if (
@@ -1300,6 +1469,7 @@ function getContextualFollowUpQuestion(question, previousTopic = "") {
       recognitionTopicForFollowUp = "reconhecimento específico";
     }
   }
+  const recognitionTopicForFollowUpNorm = stripDiacriticsLower(recognitionTopicForFollowUp);
 
   if (topic.includes("alojamento")) {
     if (asksContacts || asksPage) return "contactos do gabinete de alojamento";
@@ -1315,6 +1485,35 @@ function getContextualFollowUpQuestion(question, previousTopic = "") {
   }
 
   if (topic.includes("reconhecimento")) {
+    if (asksDefinition && (q.includes("reconhecimento academico") || q.includes("academic recognition"))) {
+      return null;
+    }
+
+    if (
+      asksDefinition &&
+      topic.includes("reconhecimento academico") &&
+      !q.includes("automatic") &&
+      !q.includes("automatico") &&
+      !q.includes("level") &&
+      !q.includes("nivel") &&
+      !q.includes("specific") &&
+      !q.includes("especifico")
+    ) {
+      return "explica-me o que é o reconhecimento académico";
+    }
+
+    if (
+      asksDefinition &&
+      !recognitionTopicForFollowUpNorm.includes("automatic") &&
+      !recognitionTopicForFollowUpNorm.includes("automatico") &&
+      !recognitionTopicForFollowUpNorm.includes("nivel") &&
+      !recognitionTopicForFollowUpNorm.includes("level") &&
+      !recognitionTopicForFollowUpNorm.includes("specific") &&
+      !recognitionTopicForFollowUpNorm.includes("especifico")
+    ) {
+      return "explica-me o que é o reconhecimento académico";
+    }
+
     if (asksDefinition) return buildIntentCarryQuestion("definition", recognitionTopicForFollowUp) || "o que e reconhecimento";
     if (asksDegrees) return buildIntentCarryQuestion("degrees", recognitionTopicForFollowUp) || "a que graus se aplica reconhecimento";
     if (asksApply) return buildIntentCarryQuestion("where", recognitionTopicForFollowUp) || `onde solicitar ${recognitionTopicForFollowUp}`;
@@ -3351,6 +3550,7 @@ function locationFallbackIfNeeded(lower, scored, topicHint = "", variantScope = 
 function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScope = "", includeDetailActions = false, language = "pt") {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
+  const detailLevel = inferResponseDetailLevel(q);
 
   const isAutoTopic =
     (q.includes("reconhecimento") && q.includes("automatico")) ||
@@ -3362,6 +3562,10 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
     q === "reconhecimento automatico" ||
     q === "reconhecimento automático" ||
     q.includes("o que e") ||
+    q.includes("what is") ||
+    q.includes("explica") ||
+    q.includes("explain") ||
+    q.includes("como funciona") ||
     q.includes("definicao") ||
     q.includes("define") ||
     q.includes("significa");
@@ -3391,7 +3595,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
   if (isDefinitionQuestion) {
     return {
       answer: withRecognitionComplementaryHelp(
-        getRecognitionTypeText("automatico", "definition", variantScope, language),
+        getRecognitionTypeText("automatico", "definition", variantScope, language, detailLevel),
         "automatico",
         "definition",
         language
@@ -3404,7 +3608,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
 
   if (isDegreesQuestion) {
     return {
-      answer: getRecognitionTypeText("automatico", "degrees", variantScope, language),
+      answer: getRecognitionTypeText("automatico", "degrees", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("automatico", "degrees", includeDetailActions, language),
@@ -3413,7 +3617,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
 
   if (isWhereQuestion) {
     return {
-      answer: getRecognitionTypeText("automatico", "where", variantScope, language),
+      answer: getRecognitionTypeText("automatico", "where", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("automatico", "where", includeDetailActions, language),
@@ -3422,7 +3626,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
 
   if (isDocumentsQuestion) {
     return {
-      answer: getRecognitionTypeText("automatico", "documents", variantScope, language),
+      answer: getRecognitionTypeText("automatico", "documents", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("automatico", "documents", includeDetailActions, language),
@@ -3431,7 +3635,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
 
   if (isTimeQuestion) {
     return {
-      answer: getRecognitionTypeText("automatico", "time", variantScope, language),
+      answer: getRecognitionTypeText("automatico", "time", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("automatico", "time", includeDetailActions, language),
@@ -3440,7 +3644,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
 
   if (isCostQuestion) {
     return {
-      answer: getRecognitionTypeText("automatico", "cost", variantScope, language),
+      answer: getRecognitionTypeText("automatico", "cost", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("automatico", "cost", includeDetailActions, language),
@@ -3454,6 +3658,7 @@ function automaticRecognitionFallbackIfNeeded(lower, topicHint = "", variantScop
 function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "", includeDetailActions = false, language = "pt") {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
+  const detailLevel = inferResponseDetailLevel(q);
 
   const isLevelTopic =
     (q.includes("reconhecimento") && q.includes("nivel")) ||
@@ -3467,6 +3672,10 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
     q === "reconhecimento de nível" ||
     q === "reconhecimento nível" ||
     q.includes("o que e") ||
+    q.includes("what is") ||
+    q.includes("explica") ||
+    q.includes("explain") ||
+    q.includes("como funciona") ||
     q.includes("definicao") ||
     q.includes("define") ||
     q.includes("significa");
@@ -3496,7 +3705,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
   if (isDefinitionQuestion) {
     return {
       answer: withRecognitionComplementaryHelp(
-        getRecognitionTypeText("nivel", "definition", variantScope, language),
+        getRecognitionTypeText("nivel", "definition", variantScope, language, detailLevel),
         "nivel",
         "definition",
         language
@@ -3509,7 +3718,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
 
   if (isWhereQuestion) {
     return {
-      answer: getRecognitionTypeText("nivel", "where", variantScope, language),
+      answer: getRecognitionTypeText("nivel", "where", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("nivel", "where", includeDetailActions, language),
@@ -3518,7 +3727,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
 
   if (isDegreesQuestion) {
     return {
-      answer: getRecognitionTypeText("nivel", "degrees", variantScope, language),
+      answer: getRecognitionTypeText("nivel", "degrees", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("nivel", "degrees", includeDetailActions, language),
@@ -3527,7 +3736,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
 
   if (isDocumentsQuestion) {
     return {
-      answer: getRecognitionTypeText("nivel", "documents", variantScope, language),
+      answer: getRecognitionTypeText("nivel", "documents", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("nivel", "documents", includeDetailActions, language),
@@ -3536,7 +3745,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
 
   if (isCostQuestion) {
     return {
-      answer: getRecognitionTypeText("nivel", "cost", variantScope, language),
+      answer: getRecognitionTypeText("nivel", "cost", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("nivel", "cost", includeDetailActions, language),
@@ -3545,7 +3754,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
 
   if (isTimeQuestion) {
     return {
-      answer: getRecognitionTypeText("nivel", "time", variantScope, language),
+      answer: getRecognitionTypeText("nivel", "time", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("nivel", "time", includeDetailActions, language),
@@ -3559,6 +3768,7 @@ function levelRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", va
 function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "", variantScope = "", includeDetailActions = false, language = "pt") {
   const q = stripDiacriticsLower(lower);
   const t = stripDiacriticsLower(topicHint);
+  const detailLevel = inferResponseDetailLevel(q);
 
   const isSpecificTopic =
     (q.includes("reconhecimento") && q.includes("especifico")) ||
@@ -3570,6 +3780,10 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
     q === "reconhecimento especifico" ||
     q === "reconhecimento específico" ||
     q.includes("o que e") ||
+    q.includes("what is") ||
+    q.includes("explica") ||
+    q.includes("explain") ||
+    q.includes("como funciona") ||
     q.includes("definicao") ||
     q.includes("define") ||
     q.includes("significa");
@@ -3601,7 +3815,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
   if (isDefinitionQuestion) {
     return {
       answer: withRecognitionComplementaryHelp(
-        getRecognitionTypeText("especifico", "definition", variantScope, language),
+        getRecognitionTypeText("especifico", "definition", variantScope, language, detailLevel),
         "especifico",
         "definition",
         language
@@ -3614,7 +3828,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
 
   if (isWhereQuestion) {
     return {
-      answer: getRecognitionTypeText("especifico", "where", variantScope, language),
+      answer: getRecognitionTypeText("especifico", "where", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("especifico", "where", includeDetailActions, language),
@@ -3623,7 +3837,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
 
   if (isDegreesQuestion) {
     return {
-      answer: getRecognitionTypeText("especifico", "degrees", variantScope, language),
+      answer: getRecognitionTypeText("especifico", "degrees", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("especifico", "degrees", includeDetailActions, language),
@@ -3632,7 +3846,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
 
   if (isDocumentsQuestion) {
     return {
-      answer: getRecognitionTypeText("especifico", "documents", variantScope, language),
+      answer: getRecognitionTypeText("especifico", "documents", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("especifico", "documents", includeDetailActions, language),
@@ -3641,7 +3855,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
 
   if (isCostQuestion) {
     return {
-      answer: getRecognitionTypeText("especifico", "cost", variantScope, language),
+      answer: getRecognitionTypeText("especifico", "cost", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("especifico", "cost", includeDetailActions, language),
@@ -3650,7 +3864,7 @@ function specificRecognitionDeterministicFallbackIfNeeded(lower, topicHint = "",
 
   if (isTimeQuestion) {
     return {
-      answer: getRecognitionTypeText("especifico", "time", variantScope, language),
+      answer: getRecognitionTypeText("especifico", "time", variantScope, language, detailLevel),
       __localized: language === "en",
       citations: [],
       actions: maybeGetRecognitionDetailActions("especifico", "time", includeDetailActions, language),
@@ -3741,6 +3955,10 @@ const inferredTopicNorm = stripDiacriticsLower(inferredTopic || "");
 const currentIntent = detectQuestionIntent(lower);
 const previousIntent = trackSession ? (sessionLastIntent.get(sessionId) || "") : "";
 const currentPendingState = trackSession ? (sessionPendingState.get(sessionId) || "") : "";
+const isShortAffirmativeFollowUp = isShortAffirmativeFollowUpPrompt(qTrim);
+const isRecognitionExplainPromptRaw = isRecognitionExplainContinuationPrompt(qTrim);
+const shouldPreserveRecognitionExplainFollowUp =
+  currentPendingState === "generic_recognition_explain" && isRecognitionExplainPromptRaw;
 const recognitionSubtypeShorthand = detectRecognitionSubtypeShorthand(qTrim);
 const hasQualifiedSessionTopic =
   previousTopicNorm.includes("reconhecimento") ||
@@ -3777,7 +3995,7 @@ const hasLocationTerms =
   qTrim.includes("servicos academicos") ||
   qTrim.includes("uaa");
 
-const contextualFollowUpQuestion = hasQualifiedSessionTopic
+const contextualFollowUpQuestion = hasQualifiedSessionTopic && !shouldPreserveRecognitionExplainFollowUp
   ? getContextualFollowUpQuestion(qTrim, previousTopicRaw)
   : null;
 
@@ -3862,9 +4080,13 @@ const isFollowUp =
 // usar tópico anterior quando é follow-up
 let enhancedQuestion = question;
 if (!contextualFollowUpQuestion && isFollowUp && hasQualifiedSessionTopic) {
+  if (shouldPreserveRecognitionExplainFollowUp) {
+    // keep the raw prompt so pending-state handling can ask which recognition type to explain
+  } else {
   const previousTopic = sessionContext.get(sessionId);
   enhancedQuestion = `${previousTopic}. ${question}`;
   console.log(`🔄 Usando tópico anterior para follow-up: ${previousTopic}`);
+  }
 }
 
 let routedQuestion = contextualFollowUpQuestion || enhancedQuestion;
@@ -3940,14 +4162,7 @@ const responseVariantScope = trackSession ? `session:${sessionId}` : `question:$
 const pendingState = trackSession ? (sessionPendingState.get(sessionId) || "") : "";
 const shouldShowRecognitionDetailActions = false;
 const normalizedPrompt = lowerNorm.replace(/[?!.]+$/g, "").trim();
-const isRecognitionExplainPrompt =
-  lowerNorm === "explica entao" ||
-  lowerNorm === "explica então" ||
-  lowerNorm === "explica" ||
-  lowerNorm === "entao explica" ||
-  lowerNorm === "então explica" ||
-  lowerNorm === "podes explicar" ||
-  lowerNorm === "pode explicar";
+const isRecognitionExplainPrompt = isRecognitionExplainContinuationPrompt(lowerNorm);
 
 if (trackSession && !(pendingState === "generic_recognition_explain" && isRecognitionExplainPrompt)) {
   sessionPendingState.delete(sessionId);
@@ -4045,6 +4260,7 @@ const outOfDomainPatterns = [
 const hasHardOutOfDomainSignal = outOfDomainPatterns.some((re) => re.test(lowerNorm));
 
 const isDomain =
+  shouldPreserveRecognitionExplainFollowUp ||
   isRecognitionSubtypeOnlyFollowUp ||
   isFollowUp ||
   isHousingIntent ||
@@ -4108,6 +4324,7 @@ if (equalityFallback) {
 
 // ───────── RESPOSTAS DETERMINÍSTICAS ANTES DE EMBEDDINGS/LLM ─────────
 const qNormRecon = lowerNorm;
+const recognitionDetailLevel = inferResponseDetailLevel(qNormRecon);
 const mentionsReconhecimento = qNormRecon.includes("reconhecimento");
 const mentionsType =
   qNormRecon.includes("automatico") ||
@@ -4166,7 +4383,8 @@ const asksAcademicRecognitionDefinition =
   !mentionsType &&
   (qNormRecon.includes("o que e o reconhecimento academico") ||
     qNormRecon.includes("o que e reconhecimento academico") ||
-    qNormRecon.includes("what is academic recognition"));
+    qNormRecon.includes("what is academic recognition") ||
+    ((qNormRecon.includes("reconhecimento academico") || qNormRecon.includes("academic recognition")) && Boolean(recognitionDetailLevel)));
 
 const asksGenericRecognitionExplanationFollowUp =
   pendingState === "generic_recognition_explain" &&
@@ -4219,18 +4437,24 @@ if (
   normalizedPrompt === "o que e reconhecimento academico"
 ) {
   return sendJson(200, {
-    answer: getRecognitionGeneralText("academicRecognitionDefinition", responseVariantScope, responseLanguage),
+    answer: getRecognitionGeneralText("academicRecognitionDefinition", responseVariantScope, responseLanguage, recognitionDetailLevel),
     __localized: responseLanguage === "en",
     citations: [],
-  }, { debugLabel: "deterministic:recognition:academic_definition_pt" });
+    actions: recognitionDetailLevel === "detailed" ? getRecognitionTypeActions("definition", responseLanguage) : [],
+  }, recognitionDetailLevel === "detailed"
+    ? { pendingState: "generic_recognition_explain", debugLabel: "deterministic:recognition:academic_definition_pt_detailed" }
+    : { debugLabel: "deterministic:recognition:academic_definition_pt" });
 }
 
 if (asksAcademicRecognitionDefinition) {
   return sendJson(200, {
-    answer: getRecognitionGeneralText("academicRecognitionDefinition", responseVariantScope, responseLanguage),
+    answer: getRecognitionGeneralText("academicRecognitionDefinition", responseVariantScope, responseLanguage, recognitionDetailLevel),
     __localized: responseLanguage === "en",
     citations: [],
-  }, { debugLabel: "deterministic:recognition:academic_definition" });
+    actions: recognitionDetailLevel === "detailed" ? getRecognitionTypeActions("definition", responseLanguage) : [],
+  }, recognitionDetailLevel === "detailed"
+    ? { pendingState: "generic_recognition_explain", debugLabel: "deterministic:recognition:academic_definition_detailed" }
+    : { debugLabel: "deterministic:recognition:academic_definition" });
 }
 
 if (asksGenericRecognitionExplanationFollowUp) {

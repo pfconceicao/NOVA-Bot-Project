@@ -32,6 +32,36 @@ const state = {
   chatHistory: [],
 };
 
+const welcomeVariants = [
+  {
+    pt: "Olá. Sou o NiA, o assistente virtual de informação da NOVA. Pode escrever diretamente a sua pergunta ou, se preferir, ver alguns tópicos para começar.",
+    en: "Hello. I am NiA, NOVA's virtual information assistant. You can type your question directly or, if you prefer, view a few topics to get started.",
+  },
+  {
+    pt: "Olá. Sou o NiA e estou aqui para ajudar com informação institucional da NOVA. Pode colocar a sua pergunta ou começar por uma das sugestões abaixo.",
+    en: "Hello. I am NiA and I am here to help with NOVA's institutional information. You can ask your question directly or start with one of the suggestions below.",
+  },
+  {
+    pt: "Bem-vindo. Sou o NiA, o assistente virtual da NOVA. Se quiser, pode escrever a sua questão diretamente ou usar um dos tópicos sugeridos para começar.",
+    en: "Welcome. I am NiA, NOVA's virtual assistant. If you prefer, you can type your question directly or use one of the suggested topics to get started.",
+  },
+];
+
+const hintVariants = [
+  {
+    pt: "Aqui tem alguns tópicos por onde pode começar.",
+    en: "Here are a few topics you can start with.",
+  },
+  {
+    pt: "Pode começar por um destes tópicos.",
+    en: "You can start with one of these topics.",
+  },
+  {
+    pt: "Deixo abaixo algumas opções para começar.",
+    en: "Below are a few options to get started.",
+  },
+];
+
 const translations = {
   welcome: {
     pt: "Olá. Sou o NiA, o assistente virtual de informação da NOVA. Pode escrever diretamente a sua pergunta ou, se preferir, ver alguns tópicos para começar.",
@@ -820,6 +850,14 @@ function primeEntryLocalization(entry) {
   void entry;
 }
 
+function pickRandomWelcomeVariant() {
+  return welcomeVariants[Math.floor(Math.random() * welcomeVariants.length)] || welcomeVariants[0];
+}
+
+function pickRandomHintVariant() {
+  return hintVariants[Math.floor(Math.random() * hintVariants.length)] || hintVariants[0];
+}
+
 async function addMessageEntry(entry) {
   const entryLanguage = entry.originalLanguage || state.currentLanguage;
   const localizedTexts = entry.localizedTexts
@@ -878,9 +916,16 @@ async function showQuickPrompts() {
     }
   }
 
+  const hintVariant = pickRandomHintVariant();
+
   await addMessageEntry({
     role: "bot",
-    i18nKey: "hint",
+    originalText: hintVariant[state.currentLanguage],
+    originalLanguage: state.currentLanguage,
+    localizedTexts: {
+      pt: hintVariant.pt,
+      en: hintVariant.en,
+    },
     metaI18nKey: "suggestionsTitle",
     actionPreset: "quickPrompts",
     simulateTyping: false,
@@ -910,9 +955,16 @@ async function initializeChat({ announceReset = false } = {}) {
     });
   }
 
+  const welcomeVariant = pickRandomWelcomeVariant();
+
   await addMessageEntry({
     role: "bot",
-    i18nKey: "welcome",
+    originalText: welcomeVariant[state.currentLanguage],
+    originalLanguage: state.currentLanguage,
+    localizedTexts: {
+      pt: welcomeVariant.pt,
+      en: welcomeVariant.en,
+    },
     actionPreset: "suggestionsCta",
     simulateTyping: true,
   });
