@@ -2,7 +2,7 @@
   "status": "pending_review",
   "source": "mobilidade__Estudantes_em_mobilidade.ndjson",
   "model": "phi3:mini",
-  "generatedAt": "2026-04-09T14:30:00.610Z",
+  "generatedAt": "2026-04-28T10:20:57.604Z",
   "sourceType": "indexed-document",
   "generationConfig": {
     "faqCount": 3,
@@ -14,7 +14,7 @@
   "faqs": [
     {
       "question": "Quando é necessário matricular para participar em programas de mobilidade?",
-      "answer": "É necessário matricular-se o mais cedo possível, após contactar o Gabinete de Mobilidades Internacionais.",
+      "answer": "Antes que possa haver, deve ser o mais cedo possível.",
       "sourcePages": [
         1
       ],
@@ -23,8 +23,8 @@
       ]
     },
     {
-      "question": "Como posso obter as regalias para estudantes em mobilidade?",
-      "answer": "Após a matrícula, receberão um cartão de estudante que confere regalias.",
+      "question": "Como posso obter as regalias do programa de mobilidade da NOVA?",
+      "answer": "Após matricular-se e receber um cartão de estudante.",
       "sourcePages": [
         1
       ],
@@ -33,8 +33,8 @@
       ]
     },
     {
-      "question": "Como posso obter acesso ao Sistema Nacional de Saúde enquries?",
-      "answer": "Se você é estudante europeu, pode solicitar o Cartão Europeu de Seguro de Doença para beneficiar do sistema nacional.",
+      "question": "Como posso obter acesso ao Sistema Nacional de Saúde?",
+      "answer": "Após matricular-se, receberão um cartão de estudante que concede esses benefícios.",
       "sourcePages": [
         1
       ],
